@@ -160,16 +160,14 @@ def run_inference_onnx(session, views: torch.Tensor):
     # Ensure views is on CPU and converted to numpy
     ort_inputs = {session.get_inputs()[0].name: views.cpu().numpy()}
     start = time.time()
-    outputs = session.run(None, ort_inputs)
-    logits = outputs[0]
-    attn_weights = outputs[1] if len(outputs) > 1 else None
+    logits, attn_weights = session.run(None, ort_inputs)
     elapsed = (time.time() - start) * 1000
 
     # Softmax on logits
     exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))
     probs = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
     probs = probs[0]
-
+    
     pred_class = int(probs.argmax())
     confidence = float(probs[pred_class])
 
@@ -178,7 +176,7 @@ def run_inference_onnx(session, views: torch.Tensor):
         "class_name": CLASS_NAMES[pred_class],
         "confidence": confidence,
         "probabilities": probs,
-        "attention_weights": attn_weights[0] if attn_weights is not None else None,
+        "attention_weights": attn_weights[0],
         "inference_time_ms": elapsed,
         "engine": "ONNX (INT8)"
     }
@@ -618,8 +616,13 @@ def render_lime(model, views, result, num_samples):
     st.markdown("### 🧩 LIME Explanations")
     st.caption("Superpixel-based local explanations for each view")
 
-    view_idx = st.selectbox("Select view to explain", range(6),
-                            format_func=lambda x: VIEW_NAMES[x])
+    # Use a unique key for the selectbox to prevent state collision
+    view_idx = st.selectbox(
+        "Select view to explain", 
+        range(6),
+        format_func=lambda x: VIEW_NAMES[x],
+        key="lime_view_selector"
+    )
 
     with st.spinner(f"Running LIME for {VIEW_NAMES[view_idx]} ({num_samples} perturbations)..."):
         try:
@@ -769,12 +772,12 @@ def render_batch_analysis(onnx_session, torch_model, enable_gradcam):
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Helvetica", "B", 20)
-                pdf.cell(0, 15, "JaalTaka Batch Analysis Report", align="C", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 15, "JaalTaka Batch Analysis Report", align="C", ln=1)
                 pdf.set_font("Helvetica", "", 10)
-                pdf.cell(0, 8, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", align="C", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 8, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", align="C", ln=1)
                 pdf.ln(10)
                 pdf.set_font("Helvetica", "B", 14)
-                pdf.cell(0, 10, f"Summary: {correct}/{total} correct ({accuracy:.1%})", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 10, f"Summary: {correct}/{total} correct ({accuracy:.1%})", ln=1)
                 pdf.ln(5)
                 pdf.set_font("Helvetica", "B", 10)
                 pdf.cell(40, 8, "Note", border=1)
@@ -833,10 +836,7 @@ def render_demo_mode(onnx_session, torch_model, enable_gradcam, enable_lime, ena
         if images is None:
             st.error("Could not load note images.")
             return
-        cols = st.columns(6)
-        for i, (col, img, name) in enumerate(zip(cols, images, VIEW_NAMES)):
-            with col:
-                st.image(img, caption=name, width="stretch")
+        
         views = preprocess_views(images)
         with st.spinner("Running inference..."):
             if onnx_session:
@@ -846,12 +846,48 @@ def render_demo_mode(onnx_session, torch_model, enable_gradcam, enable_lime, ena
             else:
                 st.error("No model available.")
                 return
+        
+        # Store in session state
+        st.session_state.analysis_result = result
+        st.session_state.current_images = images
+        st.session_state.current_views_tensor = views
+        st.session_state.gradcam_heatmaps = None # Reset gradcam
+
+    # Persistent rendering
+    if "analysis_result" in st.session_state:
+        result = st.session_state.analysis_result
+        images = st.session_state.current_images
+        views = st.session_state.current_views_tensor
+
+        cols = st.columns(6)
+        for i, (col, img, name) in enumerate(zip(cols, images, VIEW_NAMES)):
+            with col:
+                st.image(img, caption=name, width="stretch")
+
         render_result(result)
         render_attention_weights(result)
-        gradcam_heatmaps = render_gradcam(torch_model, views, result) if enable_gradcam else None
-        if enable_lime: render_lime(torch_model, views, result, lime_samples)
-        if enable_shap: render_shap()
-        pdf_buf = generate_pdf_report(result, images, gradcam_heatmaps, f"{note_type}/{note_id}")
+        
+        if enable_gradcam:
+            if st.session_state.get("gradcam_heatmaps") is None:
+                st.session_state.gradcam_heatmaps = render_gradcam(torch_model, views, result)
+            else:
+                # Re-render from state
+                st.markdown("### 🔥 Grad-CAM Heatmaps")
+                st.caption("Regions the model focuses on for its decision")
+                cols = st.columns(6)
+                for i, (col, heatmap, name) in enumerate(zip(cols, st.session_state.gradcam_heatmaps, VIEW_NAMES)):
+                    with col:
+                        img_np = denormalize(views[0, i])
+                        overlay = overlay_heatmap(img_np, heatmap)
+                        st.image(overlay, caption=name, width="stretch", clamp=True)
+        
+        if enable_lime: 
+            render_lime(torch_model, views, result, lime_samples)
+        
+        if enable_shap: 
+            render_shap()
+        
+        pdf_buf = generate_pdf_report(result, images, st.session_state.get("gradcam_heatmaps"), f"{note_type}/{note_id}")
         st.download_button("📄 Download PDF Report", data=pdf_buf, file_name=f"jaaltaka_{note_id}.pdf", mime="application/pdf")
 
 
@@ -884,13 +920,45 @@ def main():
                         result = run_inference_onnx(onnx_session, views)
                     else:
                         result = run_inference_torch(torch_model, views)
+                
+                # Store in session state
+                st.session_state.analysis_result = result
+                st.session_state.current_images = images
+                st.session_state.current_views_tensor = views
+                st.session_state.gradcam_heatmaps = None # Reset gradcam
+
+            # Persistent rendering for Single Analysis
+            if "analysis_result" in st.session_state:
+                result = st.session_state.analysis_result
+                images = st.session_state.current_images
+                views = st.session_state.current_views_tensor
+
                 render_result(result)
                 render_attention_weights(result)
-                gradcam_heatmaps = render_gradcam(torch_model, views, result) if enable_gradcam else None
-                if enable_lime: render_lime(torch_model, views, result, lime_samples)
-                if enable_shap: render_shap()
-                pdf_buf = generate_pdf_report(result, images, gradcam_heatmaps)
+                
+                if enable_gradcam:
+                    if st.session_state.get("gradcam_heatmaps") is None:
+                        st.session_state.gradcam_heatmaps = render_gradcam(torch_model, views, result)
+                    else:
+                        # Re-render from state
+                        st.markdown("### 🔥 Grad-CAM Heatmaps")
+                        st.caption("Regions the model focuses on for its decision")
+                        cols = st.columns(6)
+                        for i, (col, heatmap, name) in enumerate(zip(cols, st.session_state.gradcam_heatmaps, VIEW_NAMES)):
+                            with col:
+                                img_np = denormalize(views[0, i])
+                                overlay = overlay_heatmap(img_np, heatmap)
+                                st.image(overlay, caption=name, width="stretch", clamp=True)
+                
+                if enable_lime: 
+                    render_lime(torch_model, views, result, lime_samples)
+                
+                if enable_shap: 
+                    render_shap()
+                
+                pdf_buf = generate_pdf_report(result, images, st.session_state.get("gradcam_heatmaps"))
                 st.download_button("📄 Download PDF Report", data=pdf_buf, file_name="jaaltaka_report.pdf", mime="application/pdf")
+
     elif mode == "Batch Analysis":
         render_batch_analysis(onnx_session, torch_model, enable_gradcam)
     elif mode == "Demo (Samples)":
