@@ -326,10 +326,13 @@ def generate_pdf_report(result, images, gradcam_heatmaps=None, note_label="Sampl
             pdf.add_page()
         pdf.set_font("Helvetica", "", 10)
         pdf.cell(0, 6, f"View {i+1}: {name}", ln=1)
-        buf = io.BytesIO()
-        img.resize((IMAGE_SIZE, IMAGE_SIZE)).save(buf, format="PNG")
-        buf.seek(0)
-        pdf.image(buf, w=60)
+        
+        # Save to temp file for fpdf 1.x compatibility
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+            img.resize((IMAGE_SIZE, IMAGE_SIZE)).save(tmp.name, format="PNG")
+            pdf.image(tmp.name, w=60)
+        if os.path.exists(tmp.name):
+            os.remove(tmp.name)
         pdf.ln(3)
 
     if gradcam_heatmaps is not None:
@@ -347,11 +350,14 @@ def generate_pdf_report(result, images, gradcam_heatmaps=None, note_label="Sampl
             ax.imshow(overlay)
             ax.set_title(name, fontsize=10)
             ax.axis("off")
-            buf = io.BytesIO()
-            fig.savefig(buf, dpi=100, bbox_inches="tight", format="png")
+            
+            # Save overlay to temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                fig.savefig(tmp.name, dpi=100, bbox_inches="tight", format="png")
+                pdf.image(tmp.name, w=60)
+            if os.path.exists(tmp.name):
+                os.remove(tmp.name)
             plt.close(fig)
-            buf.seek(0)
-            pdf.image(buf, w=60)
             pdf.ln(3)
 
     buf = io.BytesIO()
