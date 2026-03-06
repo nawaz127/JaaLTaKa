@@ -555,7 +555,7 @@ def render_result(result):
         },
     ))
     fig.update_layout(height=250, margin=dict(t=50, b=0, l=30, r=30))
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True, theme="streamlit", config={'responsive': True})
 
 
 def render_attention_weights(result):
@@ -580,7 +580,7 @@ def render_attention_weights(result):
         height=350,
         margin=dict(t=20, b=40),
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True, theme="streamlit", config={'responsive': True})
 
 
 def render_gradcam(model, views, result):
@@ -662,7 +662,7 @@ def render_shap():
         height=300,
         margin=dict(t=20, b=40, l=120),
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True, theme="streamlit", config={'responsive': True})
 
     st.info(
         "**Key Finding:** Views 1 (Front) and 6 (Hologram/UV) contribute the most "
