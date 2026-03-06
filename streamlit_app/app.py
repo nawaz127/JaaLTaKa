@@ -440,9 +440,9 @@ def render_sidebar():
         enable_shap = st.checkbox("Show SHAP Attribution", value=True)
 
         if enable_lime:
-            lime_samples = st.slider("LIME perturbations", 100, 1000, 300, 100)
+            lime_samples = st.slider("LIME perturbations", 50, 500, 150, 50)
         else:
-            lime_samples = 300
+            lime_samples = 150
 
         st.markdown("---")
         st.markdown(
