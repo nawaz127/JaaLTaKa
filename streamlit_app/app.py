@@ -70,7 +70,7 @@ VIEW_NAMES = [
 
 # Paths for both PyTorch and ONNX models
 PTH_PATH = PROJECT_ROOT / "outputs" / "checkpoints" / "attention_transformer_best.pth"
-ONNX_PATH = PROJECT_ROOT / "outputs" / "exports" / "jaaltaka_attention.onnx"
+ONNX_PATH = PROJECT_ROOT / "outputs" / "exports" / "jaaltaka_attention_int8.onnx"
 
 SAMPLE_DIRS = {
     "fake": PROJECT_ROOT / "fake_notes",
@@ -477,7 +477,7 @@ def render_upload_section():
         cols = st.columns(6)
         for i, (col, img, name) in enumerate(zip(cols, images, VIEW_NAMES)):
             with col:
-                st.image(img, caption=name, use_column_width=True)
+                st.image(img, caption=name, use_container_width=True)
 
         return images
 
@@ -539,6 +539,10 @@ def render_attention_weights(result):
     st.caption("How much the model focused on each view")
 
     weights = result["attention_weights"]
+    if weights is None:
+        st.warning("Attention weights not available for this model.")
+        return
+
     fig = go.Figure(go.Bar(
         x=VIEW_NAMES,
         y=weights,
@@ -792,7 +796,7 @@ def render_demo_mode(onnx_session, torch_model, enable_gradcam, enable_lime, ena
         cols = st.columns(6)
         for i, (col, img, name) in enumerate(zip(cols, images, VIEW_NAMES)):
             with col:
-                st.image(img, caption=name, use_column_width=True)
+                st.image(img, caption=name, use_container_width=True)
         views = preprocess_views(images)
         with st.spinner("Running inference..."):
             if onnx_session:

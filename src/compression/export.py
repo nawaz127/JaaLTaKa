@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 # ONNX EXPORT
 # ============================================================================
 
+class ONNXWrapper(nn.Module):
+    """Wrapper to ensure model always returns two outputs for ONNX."""
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+    def forward(self, x):
+        return self.model(x, return_attention=True)
+
 def export_to_onnx(
     model: nn.Module,
     export_path: Optional[Path] = None,
@@ -35,17 +43,6 @@ def export_to_onnx(
 ) -> Path:
     """
     Export PyTorch model to ONNX format.
-
-    Parameters
-    ----------
-    model : nn.Module
-        Trained multi-view model.
-    export_path : Path
-        Output .onnx file path.
-
-    Returns
-    -------
-    Path to saved ONNX model.
     """
     if export_path is None:
         export_path = EXPORT_DIR / "jaaltaka_model.onnx"
@@ -53,20 +50,24 @@ def export_to_onnx(
 
     model.eval()
     model.cpu()
+    
+    # Wrap model to always return logits and attention
+    wrapper = ONNXWrapper(model)
 
     # Dummy input: (1, 6, 3, 224, 224)
     dummy_input = torch.randn(1, NUM_VIEWS, 3, IMAGE_SIZE, IMAGE_SIZE)
 
     torch.onnx.export(
-        model,
+        wrapper,
         dummy_input,
         str(export_path),
         opset_version=opset_version,
         input_names=["views"],
-        output_names=["logits"],
+        output_names=["logits", "attention"],
         dynamic_axes={
             "views": {0: "batch_size"},
             "logits": {0: "batch_size"},
+            "attention": {0: "batch_size"},
         },
     )
 
