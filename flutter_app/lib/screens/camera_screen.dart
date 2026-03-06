@@ -228,8 +228,13 @@ class _CameraScreenState extends State<CameraScreen> {
           // More Menu
           PopupMenuButton<String>(
             onSelected: (value) {
+              final provider = context.read<AuthenticationProvider>();
               if (value == 'theme') {
-                context.read<AuthenticationProvider>().toggleTheme();
+                provider.toggleTheme();
+              } else if (value == 'lang') {
+                provider.toggleLanguage();
+              } else if (value == 'voice') {
+                provider.toggleVoice();
               }
             },
             itemBuilder: (BuildContext context) {
@@ -251,6 +256,26 @@ class _CameraScreenState extends State<CameraScreen> {
                     ],
                   ),
                 ),
+                PopupMenuItem(
+                  value: 'lang',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.language, size: 20),
+                      const SizedBox(width: 8),
+                      Text(provider.isBangla ? 'Switch to English' : 'বাংলায় পরিবর্তন করুন'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'voice',
+                  child: Row(
+                    children: [
+                      Icon(provider.isVoiceEnabled ? Icons.volume_up : Icons.volume_off, size: 20),
+                      const SizedBox(width: 8),
+                      Text(provider.isVoiceEnabled ? 'Mute Voice' : 'Enable Voice'),
+                    ],
+                  ),
+                ),
               ];
             },
           ),
@@ -261,6 +286,30 @@ class _CameraScreenState extends State<CameraScreen> {
           final viewIdx = provider.currentViewIndex;
           final captured = provider.capturedViews.length;
           final total = OnnxService.numViews;
+
+          // Model downloading overlay
+          if (!provider.isModelLoaded && provider.modelLoadProgress > 0) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.cloud_download, size: 60, color: Colors.blue),
+                  const SizedBox(height: 16),
+                  Text(
+                    provider.isBangla ? 'এআই মডেল ডাউনলোড হচ্ছে...' : 'Downloading AI Model...',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: 200,
+                    child: LinearProgressIndicator(value: provider.modelLoadProgress),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('${(provider.modelLoadProgress * 100).toStringAsFixed(0)}%'),
+                ],
+              ),
+            );
+          }
 
           return Stack(
             children: [
@@ -307,7 +356,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     child: Column(
                       children: [
                         Text(
-                          'View $captured / $total',
+                          provider.isBangla ? 'ছবি $captured / $total' : 'View $captured / $total',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,
@@ -381,7 +430,7 @@ class _CameraScreenState extends State<CameraScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _viewInstructions[viewIdx],
+                            provider.currentInstruction,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Colors.white,
@@ -389,9 +438,9 @@ class _CameraScreenState extends State<CameraScreen> {
                             ),
                           ),
                         ] else
-                          const Text(
-                            'All views captured! Tap to continue...',
-                            style: TextStyle(
+                          Text(
+                            provider.currentInstruction,
+                            style: const TextStyle(
                               color: Colors.green,
                               fontSize: 16,
                               fontWeight: FontWeight.bold,

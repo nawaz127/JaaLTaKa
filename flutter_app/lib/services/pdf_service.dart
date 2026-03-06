@@ -124,7 +124,7 @@ class PdfService {
       children: [
         _buildMetricItem('Confidence', result.confidencePercent),
         _buildMetricItem('Inference Time', '${result.inferenceTimeMs.toStringAsFixed(0)} ms'),
-        _buildMetricItem('Engine', 'ONNX (INT8)'),
+        _buildMetricItem('Serial No.', result.serialNumber),
       ],
     );
   }

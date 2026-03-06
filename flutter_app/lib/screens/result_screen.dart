@@ -221,17 +221,32 @@ class _ResultScreenState extends State<ResultScreen>
               ),
               const SizedBox(height: 16),
 
-              // Inference time
+              // Inference time and Serial Number
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Row(
+                  child: Column(
                     children: [
-                      const Icon(Icons.speed, color: Colors.blue),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Inference: ${result.inferenceTimeMs.toStringAsFixed(0)} ms',
-                        style: Theme.of(context).textTheme.bodyLarge,
+                      Row(
+                        children: [
+                          const Icon(Icons.numbers, color: Colors.purple),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Serial Number: ${result.serialNumber}',
+                            style: Theme.of(context).textTheme.bodyLarge,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.speed, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Inference: ${result.inferenceTimeMs.toStringAsFixed(0)} ms',
+                            style: Theme.of(context).textTheme.bodyLarge,
+                          ),
+                        ],
                       ),
                     ],
                   ),

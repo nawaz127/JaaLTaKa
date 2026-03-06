@@ -4,9 +4,12 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../models/auth_result.dart';
 
@@ -16,7 +19,7 @@ class OnnxService {
   static const int inputSize = 224;
   static const int numViews = 6;
   static const int numChannels = 3;
-  static const String modelAssetPath = 'assets/models/jaaltaka_attention.onnx';
+  static const String modelDownloadUrl = 'https://github.com/nawaz127/JaaLTaKa/raw/main/outputs/exports/jaaltaka_attention_int8.onnx';
 
   // ImageNet normalization constants
   static const List<double> mean = [0.485, 0.456, 0.406];
@@ -49,10 +52,10 @@ class OnnxService {
     OrtEnv.instance.init();
   }
 
-  Future<void> loadModel() async {
+  Future<void> loadModel({void Function(double)? onProgress}) async {
     if (_isLoaded) return;
     try {
-      final modelPath = await _getModelPath();
+      final modelPath = await _downloadModelIfNotExists(onProgress);
       final sessionOptions = OrtSessionOptions();
       _session = OrtSession.fromFile(File(modelPath), sessionOptions);
       _isLoaded = true;
@@ -62,14 +65,63 @@ class OnnxService {
     }
   }
 
-  Future<String> _getModelPath() async {
+  Future<String> _downloadModelIfNotExists(void Function(double)? onProgress) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final modelFile = File('${appDir.path}/jaaltaka_attention.onnx');
-    if (!await modelFile.exists()) {
-      final data = await rootBundle.load(modelAssetPath);
-      await modelFile.writeAsBytes(data.buffer.asUint8List());
+    final modelFile = File('${appDir.path}/jaaltaka_attention_int8.onnx');
+
+    if (await modelFile.exists()) {
+      final size = await modelFile.length();
+      if (size > 10 * 1024 * 1024) { // Roughly 10MB sanity check
+        onProgress?.call(1.0);
+        return modelFile.path;
+      }
     }
+
+    // Download model
+    debugPrint('Downloading model from GitHub...');
+    final request = http.Request('GET', Uri.parse(modelDownloadUrl));
+    final response = await http.Client().send(request);
+
+    final totalBytes = response.contentLength ?? 30000000; // Fallback 30MB
+    int receivedBytes = 0;
+    final List<int> bytes = [];
+
+    await for (final chunk in response.stream) {
+      bytes.addAll(chunk);
+      receivedBytes += chunk.length;
+      onProgress?.call(receivedBytes / totalBytes);
+    }
+
+    await modelFile.writeAsBytes(bytes);
+    debugPrint('Model downloaded to: ${modelFile.path}');
     return modelFile.path;
+  }
+
+  Future<String> _extractSerialNumber(String imagePath) async {
+    try {
+      final inputImage = InputImage.fromFilePath(imagePath);
+      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+      await textRecognizer.close();
+
+      // Look for a string that looks like a serial number (e.g., contains numbers and maybe some letters)
+      String bestMatch = '';
+      for (TextBlock block in recognizedText.blocks) {
+        for (TextLine line in block.lines) {
+          final text = line.text.trim();
+          // Heuristic: Serials often have digits and are somewhat long
+          if (text.contains(RegExp(r'\d')) && text.length >= 4) {
+            if (text.length > bestMatch.length) {
+              bestMatch = text;
+            }
+          }
+        }
+      }
+      return bestMatch.isNotEmpty ? bestMatch : 'Unknown';
+    } catch (e) {
+      debugPrint('OCR Error: $e');
+      return 'Unknown';
+    }
   }
 
   /// Parse ONNX output safely handling List<List<double>>, List<List<num>>, flat list.
@@ -128,6 +180,9 @@ class OnnxService {
     // 2. Run inference
     final probs = _runRawInference(inputTensor);
 
+    // 3. OCR on View 5 (index 4) for Serial Number
+    final serialNumber = await _extractSerialNumber(viewPaths[4]);
+
     // probs[0] = Fake probability, probs[1] = Real probability
     final isAuthentic = probs[1] > probs[0];
     final confidence = isAuthentic ? probs[1] : probs[0];
@@ -148,6 +203,7 @@ class OnnxService {
       classProbabilities: {'Fake': probs[0], 'Real': probs[1]},
       inferenceTimeMs: stopwatch.elapsedMilliseconds.toDouble(),
       viewResults: viewResults,
+      serialNumber: serialNumber,
     );
   }
 
