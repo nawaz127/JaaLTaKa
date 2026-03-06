@@ -616,7 +616,10 @@ def render_lime(model, views, result, num_samples):
     st.markdown("### 🧩 LIME Explanations")
     st.caption("Superpixel-based local explanations for each view")
 
-    # Use a unique key for the selectbox to prevent state collision
+    # Initialize LIME cache if not present
+    if "lime_cache" not in st.session_state:
+        st.session_state.lime_cache = {}
+
     view_idx = st.selectbox(
         "Select view to explain", 
         range(6),
@@ -624,14 +627,23 @@ def render_lime(model, views, result, num_samples):
         key="lime_view_selector"
     )
 
-    with st.spinner(f"Running LIME for {VIEW_NAMES[view_idx]} ({num_samples} perturbations)..."):
-        try:
-            explanation = generate_lime(model, views, view_idx, num_samples)
-            img_np = denormalize(views[0, view_idx])
-            col1, col2 = st.columns(2)
-            with col1:
-                st.image(img_np, caption="Original", width="stretch", clamp=True)
-            with col2:
+    # Check if we have this view in cache
+    cache_key = f"{view_idx}_{num_samples}_{result['predicted_class']}"
+    
+    if cache_key in st.session_state.lime_cache:
+        display = st.session_state.lime_cache[cache_key]
+        img_np = denormalize(views[0, view_idx])
+        col1, col2 = st.columns(2)
+        with col1:
+            st.image(img_np, caption="Original", use_container_width=True, clamp=True)
+        with col2:
+            st.image(display, caption="LIME Explanation (from cache)", use_container_width=True, clamp=True)
+    else:
+        with st.spinner(f"Running LIME for {VIEW_NAMES[view_idx]} ({num_samples} perturbations)..."):
+            try:
+                explanation = generate_lime(model, views, view_idx, num_samples)
+                img_np = denormalize(views[0, view_idx])
+                
                 temp, mask = explanation.get_image_and_mask(
                     result["predicted_class"],
                     positive_only=False,
@@ -639,9 +651,17 @@ def render_lime(model, views, result, num_samples):
                     hide_rest=False,
                 )
                 display = temp / 255.0 if temp.max() > 1 else temp
-                st.image(display, caption="LIME Explanation", width="stretch", clamp=True)
-        except Exception as e:
-            st.error(f"LIME explanation failed: {e}")
+                
+                # Store in cache
+                st.session_state.lime_cache[cache_key] = display
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.image(img_np, caption="Original", use_container_width=True, clamp=True)
+                with col2:
+                    st.image(display, caption="LIME Explanation", use_container_width=True, clamp=True)
+            except Exception as e:
+                st.error(f"LIME explanation failed: {e}")
 
 
 def render_shap():
