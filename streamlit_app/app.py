@@ -360,10 +360,22 @@ def generate_pdf_report(result, images, gradcam_heatmaps=None, note_label="Sampl
             plt.close(fig)
             pdf.ln(3)
 
-    buf = io.BytesIO()
-    pdf.output(buf)
-    buf.seek(0)
-    return buf
+    # Legacy fpdf 1.x expects dest='S' to return the PDF as a string/bytes
+    try:
+        # In some Python 3 ports of fpdf, dest='S' returns bytes directly
+        pdf_bytes = pdf.output(dest='S')
+        if isinstance(pdf_bytes, str):
+            pdf_bytes = pdf_bytes.encode('latin-1')
+        return io.BytesIO(pdf_bytes)
+    except Exception:
+        # Fallback for other versions
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            pdf.output(tmp.name)
+            with open(tmp.name, "rb") as f:
+                pdf_bytes = f.read()
+        if os.path.exists(tmp.name):
+            os.remove(tmp.name)
+        return io.BytesIO(pdf_bytes)
 
 
 # ============================================================================
@@ -781,9 +793,22 @@ def render_batch_analysis(onnx_session, torch_model, enable_gradcam):
                     pdf.cell(25, 7, "Yes" if r["correct"] == True else "No", border=1)
                     pdf.cell(25, 7, f"{r['inference_time_ms']:.0f} ms", border=1)
                     pdf.ln()
-                buf = io.BytesIO()
-                pdf.output(buf)
-                buf.seek(0)
+                
+                # Use same robust output logic
+                try:
+                    pdf_bytes = pdf.output(dest='S')
+                    if isinstance(pdf_bytes, str):
+                        pdf_bytes = pdf_bytes.encode('latin-1')
+                    buf = io.BytesIO(pdf_bytes)
+                except Exception:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                        pdf.output(tmp.name)
+                        with open(tmp.name, "rb") as f:
+                            pdf_bytes = f.read()
+                    if os.path.exists(tmp.name):
+                        os.remove(tmp.name)
+                    buf = io.BytesIO(pdf_bytes)
+                
                 st.download_button("Download PDF", data=buf, file_name="batch_report.pdf", mime="application/pdf")
             except Exception as e:
                 st.error(f"Failed to generate report: {e}")
