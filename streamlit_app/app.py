@@ -257,7 +257,16 @@ def generate_lime(model, views: torch.Tensor, view_idx: int, num_samples: int = 
 
 def generate_pdf_report(result, images, gradcam_heatmaps=None, note_label="Sample"):
     """Generate a PDF report of the authentication result."""
-    from fpdf import FPDF, XPos, YPos
+    try:
+        from fpdf import FPDF, XPos, YPos
+    except ImportError:
+        from fpdf import FPDF
+        try:
+            from fpdf.enums import XPos, YPos
+        except ImportError:
+            # Last resort fallback if enums are not found
+            class XPos: LMARGIN = "LMARGIN"
+            class YPos: NEXT = "NEXT"
     import io
 
     def extract_serial(images, note_label):
@@ -477,7 +486,7 @@ def render_upload_section():
         cols = st.columns(6)
         for i, (col, img, name) in enumerate(zip(cols, images, VIEW_NAMES)):
             with col:
-                st.image(img, caption=name, use_container_width=True)
+                st.image(img, caption=name, width="stretch")
 
         return images
 
@@ -530,7 +539,7 @@ def render_result(result):
         },
     ))
     fig.update_layout(height=250, margin=dict(t=50, b=0, l=30, r=30))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def render_attention_weights(result):
@@ -555,7 +564,7 @@ def render_attention_weights(result):
         height=350,
         margin=dict(t=20, b=40),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def render_gradcam(model, views, result):
@@ -575,7 +584,7 @@ def render_gradcam(model, views, result):
                 with col:
                     img_np = denormalize(views[0, i])
                     overlay = overlay_heatmap(img_np, heatmap)
-                    st.image(overlay, caption=name, use_column_width=True, clamp=True)
+                    st.image(overlay, caption=name, width="stretch", clamp=True)
             return heatmaps
         except Exception as e:
             st.error(f"Grad-CAM generation failed: {e}")
@@ -600,7 +609,7 @@ def render_lime(model, views, result, num_samples):
             img_np = denormalize(views[0, view_idx])
             col1, col2 = st.columns(2)
             with col1:
-                st.image(img_np, caption="Original", use_column_width=True, clamp=True)
+                st.image(img_np, caption="Original", width="stretch", clamp=True)
             with col2:
                 temp, mask = explanation.get_image_and_mask(
                     result["predicted_class"],
@@ -609,7 +618,7 @@ def render_lime(model, views, result, num_samples):
                     hide_rest=False,
                 )
                 display = temp / 255.0 if temp.max() > 1 else temp
-                st.image(display, caption="LIME Explanation", use_column_width=True, clamp=True)
+                st.image(display, caption="LIME Explanation", width="stretch", clamp=True)
         except Exception as e:
             st.error(f"LIME explanation failed: {e}")
 
@@ -632,7 +641,7 @@ def render_shap():
         height=300,
         margin=dict(t=20, b=40, l=120),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.info(
         "**Key Finding:** Views 1 (Front) and 6 (Hologram/UV) contribute the most "
@@ -734,7 +743,7 @@ def render_batch_analysis(onnx_session, torch_model, enable_gradcam):
             "Correct": "✅" if r["correct"] == True else ("❌" if r["correct"] == False else "-"),
             "Time (ms)": f"{r['inference_time_ms']:.0f}",
         } for r in results_list])
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
 
         if st.button("📄 Download Batch Report"):
             try:
@@ -796,7 +805,7 @@ def render_demo_mode(onnx_session, torch_model, enable_gradcam, enable_lime, ena
         cols = st.columns(6)
         for i, (col, img, name) in enumerate(zip(cols, images, VIEW_NAMES)):
             with col:
-                st.image(img, caption=name, use_container_width=True)
+                st.image(img, caption=name, width="stretch")
         views = preprocess_views(images)
         with st.spinner("Running inference..."):
             if onnx_session:
