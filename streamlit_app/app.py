@@ -287,45 +287,45 @@ def generate_pdf_report(result, images, gradcam_heatmaps=None, note_label="Sampl
     pdf.add_page()
 
     pdf.set_font("Helvetica", "B", 20)
-    pdf.cell(0, 15, "JaalTaka Authentication Report", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+    pdf.cell(0, 15, "JaalTaka Authentication Report", ln=1, align="C")
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 8, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
-    pdf.cell(0, 8, "Developed by Shah Nawaz", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+    pdf.cell(0, 8, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=1, align="C")
+    pdf.cell(0, 8, "Developed by Shah Nawaz", ln=1, align="C")
     pdf.ln(5)
 
     pdf.set_font("Helvetica", "B", 16)
     verdict_color = (220, 53, 69) if result["class_name"] == "Fake" else (40, 167, 69)
     pdf.set_text_color(*verdict_color)
-    pdf.cell(0, 12, f"Verdict: {result['class_name']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+    pdf.cell(0, 12, f"Verdict: {result['class_name']}", ln=1, align="C")
     pdf.set_text_color(0, 0, 0)
 
     pdf.set_font("Helvetica", "", 12)
-    pdf.cell(0, 8, f"Confidence: {result['confidence']:.1%}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.cell(0, 8, f"Inference Time: {result['inference_time_ms']:.0f} ms", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.cell(0, 8, f"Note Serial: {note_serial}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 8, f"Confidence: {result['confidence']:.1%}", ln=1)
+    pdf.cell(0, 8, f"Inference Time: {result['inference_time_ms']:.0f} ms", ln=1)
+    pdf.cell(0, 8, f"Note Serial: {note_serial}", ln=1)
     pdf.ln(5)
 
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Class Probabilities:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 8, "Class Probabilities:", ln=1)
     pdf.set_font("Helvetica", "", 11)
     for i, name in enumerate(CLASS_NAMES):
-        pdf.cell(0, 7, f"  {name}: {result['probabilities'][i]:.4f}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(0, 7, f"  {name}: {result['probabilities'][i]:.4f}", ln=1)
     pdf.ln(3)
 
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Attention Weights:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 8, "Attention Weights:", ln=1)
     pdf.set_font("Helvetica", "", 11)
     for i, name in enumerate(VIEW_NAMES):
-        pdf.cell(0, 7, f"  {name}: {result['attention_weights'][i]:.4f}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(0, 7, f"  {name}: {result['attention_weights'][i]:.4f}", ln=1)
     pdf.ln(3)
 
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, "Captured Views:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 8, "Captured Views:", ln=1)
     for i, (img, name) in enumerate(zip(images, VIEW_NAMES)):
         if i % 3 == 0 and i > 0:
             pdf.add_page()
         pdf.set_font("Helvetica", "", 10)
-        pdf.cell(0, 6, f"View {i+1}: {name}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(0, 6, f"View {i+1}: {name}", ln=1)
         buf = io.BytesIO()
         img.resize((IMAGE_SIZE, IMAGE_SIZE)).save(buf, format="PNG")
         buf.seek(0)
@@ -335,7 +335,7 @@ def generate_pdf_report(result, images, gradcam_heatmaps=None, note_label="Sampl
     if gradcam_heatmaps is not None:
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 14)
-        pdf.cell(0, 10, "Grad-CAM Heatmaps", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+        pdf.cell(0, 10, "Grad-CAM Heatmaps", ln=1, align="C")
         pdf.ln(3)
         views_tensor = preprocess_views(images)
         for i, (heatmap, name) in enumerate(zip(gradcam_heatmaps, VIEW_NAMES)):
