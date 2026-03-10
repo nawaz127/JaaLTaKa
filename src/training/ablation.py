@@ -20,7 +20,7 @@ from src.config import (
     OUTPUT_DIR, FIGURE_DIR, seed_everything,
 )
 from src.dataset.dataloader import build_dataloaders
-from src.models.baseline import MultiViewResNet
+from src.models.baseline import MultiViewBaseline
 from src.models.attention import MultiViewAttentionNet
 from src.training.trainer import Trainer
 from src.evaluation.metrics import full_evaluation
@@ -59,7 +59,7 @@ def run_view_ablation(
         )
 
         if model_class == "baseline":
-            model = MultiViewResNet(pretrained=True)
+            model = MultiViewBaseline(pretrained=True)
         else:
             model = MultiViewAttentionNet(pretrained=True)
 
@@ -134,13 +134,15 @@ def run_view_dropout_ablation(
 # ============================================================================
 
 def run_model_comparison(num_epochs: int = NUM_EPOCHS) -> pd.DataFrame:
-    """Compare ResNet baseline vs Attention model."""
+    """Compare different baselines vs Attention model."""
     seed_everything()
     results = []
 
     model_configs = [
-        ("ResNet_MeanPool", lambda: MultiViewResNet(pretrained=True)),
-        ("Attention_Transformer", lambda: MultiViewAttentionNet(pretrained=True)),
+        ("ResNet50_MeanPool", lambda: MultiViewBaseline(backbone_name="resnet50", pretrained=True)),
+        ("MobileNetV2_MeanPool", lambda: MultiViewBaseline(backbone_name="mobilenet_v2", pretrained=True)),
+        ("EfficientNetB0_MeanPool", lambda: MultiViewBaseline(backbone_name="efficientnet_b0", pretrained=True)),
+        ("Proposed_Attention_Transformer", lambda: MultiViewAttentionNet(backbone_name="resnet50", pretrained=True)),
     ]
 
     for name, model_fn in model_configs:

@@ -137,23 +137,23 @@ class MultiViewGradCAM:
             # We need per-view activations: reshape and forward single view
             view_input = views[0, v_idx].unsqueeze(0)  # (1, 3, H, W)
 
-            # Forward through backbone only
-            self.activations = None
-            self.gradients = None
-
+            # Forward through backbone only to get activations and gradients
             view_input.requires_grad_(True)
             feat = self.model.backbone(view_input)  # triggers hooks
-
-            # Compute grad w.r.t. target class through the full pipeline
-            # Use feature → project → classify path
             feat_flat = feat.view(1, -1)
 
-            # For baseline model: pass through classifier directly
-            if hasattr(self.model, 'projector'):
-                # Attention model
-                feat_proj = self.model.projector(feat_flat.unsqueeze(1))
+            # Compute grad w.r.t. target class through the full pipeline
+            if hasattr(self.model, "transformer"):
+                # Attention model: Needs to pass through projector, view embeddings, transformer, and pool
+                # We simulate the single-view contribution to the pool
+                feat_proj = self.model.projector(feat_flat.unsqueeze(1)) # (1, 1, d_model)
                 feat_proj = feat_proj + self.model.view_embeddings[:, v_idx:v_idx+1, :]
-                out = self.model.classifier(feat_proj.squeeze(1))
+                
+                # Transformer + Pooling (simplified for single-view gradient)
+                feat_trans = self.model.transformer(feat_proj)
+                # For attention pooling, we use the learned query logic
+                pooled, _ = self.model.attention_pool(feat_trans)
+                out = self.model.classifier(pooled)
             else:
                 # Baseline model
                 out = self.model.classifier(feat_flat)

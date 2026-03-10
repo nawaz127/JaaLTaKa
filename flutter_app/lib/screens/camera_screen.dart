@@ -328,18 +328,14 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
 
-              // Enhanced banknote alignment guide with corners
+              // Professional Dynamic Viewfinder Overlay
               if (_isInitialized)
-                Center(
+                Positioned.fill(
                   child: CustomPaint(
-                    size: Size(
-                      MediaQuery.of(context).size.width * 0.85,
-                      MediaQuery.of(context).size.width * 0.45,
-                    ),
-                    painter: _BanknoteGuidePainter(
-                      color: viewIdx < total
-                          ? Colors.white.withValues(alpha: 0.8)
-                          : Colors.green.withValues(alpha: 0.8),
+                    painter: ViewfinderPainter(
+                      viewIndex: provider.currentViewIndex,
+                      isCapturing: _isCapturing,
+                      isBangla: provider.isBangla,
                     ),
                   ),
                 ),
@@ -616,3 +612,120 @@ class _BanknoteGuidePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+/// Professional dynamic viewfinder that changes based on the required view.
+class ViewfinderPainter extends CustomPainter {
+  final int viewIndex;
+  final bool isCapturing;
+  final bool isBangla;
+
+  ViewfinderPainter({
+    required this.viewIndex,
+    required this.isCapturing,
+    required this.isBangla,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = isCapturing ? Colors.red : Colors.white.withOpacity(0.5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    final fillPaint = Paint()
+      ..color = Colors.black.withOpacity(0.4)
+      ..style = PaintingStyle.fill;
+
+    // View specific bounding boxes
+    Rect viewfinderRect;
+    double w = size.width;
+    double h = size.height;
+
+    switch (viewIndex) {
+      case 0: // Front
+      case 1: // Back
+        viewfinderRect = Rect.fromCenter(
+          center: Offset(w / 2, h / 2),
+          width: w * 0.85,
+          height: w * 0.42,
+        );
+        break;
+      case 2: // Watermark
+        viewfinderRect = Rect.fromCenter(
+          center: Offset(w * 0.75, h / 2),
+          width: w * 0.35,
+          height: w * 0.35,
+        );
+        break;
+      case 3: // Thread
+        viewfinderRect = Rect.fromCenter(
+          center: Offset(w * 0.4, h / 2),
+          width: w * 0.15,
+          height: h * 0.6,
+        );
+        break;
+      case 4: // Serial
+        viewfinderRect = Rect.fromCenter(
+          center: Offset(w / 2, h / 2),
+          width: w * 0.6,
+          height: w * 0.2,
+        );
+        break;
+      case 5: // Hologram
+        viewfinderRect = Rect.fromCenter(
+          center: Offset(w * 0.2, h / 2),
+          width: w * 0.3,
+          height: w * 0.3,
+        );
+        break;
+      default:
+        viewfinderRect = Rect.fromLTWH(0, 0, w, h);
+    }
+
+    // Draw darkened background with transparent hole
+    Path path = Path()
+      ..addRect(Rect.fromLTWH(0, 0, w, h))
+      ..addRect(viewfinderRect)
+      ..fillType = PathFillType.evenOdd;
+    canvas.drawPath(path, fillPaint);
+
+    // Draw viewfinder border
+    final borderPaint = Paint()
+      ..color = isCapturing ? Colors.red : Colors.amber
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round;
+
+    double cornerSize = 30.0;
+    // Top Left
+    canvas.drawLine(viewfinderRect.topLeft, viewfinderRect.topLeft + Offset(0, cornerSize), borderPaint);
+    canvas.drawLine(viewfinderRect.topLeft, viewfinderRect.topLeft + Offset(cornerSize, 0), borderPaint);
+    // Top Right
+    canvas.drawLine(viewfinderRect.topRight, viewfinderRect.topRight + Offset(0, cornerSize), borderPaint);
+    canvas.drawLine(viewfinderRect.topRight, viewfinderRect.topRight + Offset(-cornerSize, 0), borderPaint);
+    // Bottom Left
+    canvas.drawLine(viewfinderRect.bottomLeft, viewfinderRect.bottomLeft + Offset(0, -cornerSize), borderPaint);
+    canvas.drawLine(viewfinderRect.bottomLeft, viewfinderRect.bottomLeft + Offset(cornerSize, 0), borderPaint);
+    // Bottom Right
+    canvas.drawLine(viewfinderRect.bottomRight, viewfinderRect.bottomRight + Offset(0, -cornerSize), borderPaint);
+    canvas.drawLine(viewfinderRect.bottomRight, viewfinderRect.bottomRight + Offset(-cornerSize, 0), borderPaint);
+
+    // Label
+    if (!isCapturing) {
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: isBangla ? "????? ?????" : "ALIGN HERE",
+          style: const TextStyle(color: Colors.amber, fontSize: 14, fontWeight: FontWeight.bold),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(canvas, viewfinderRect.topCenter + Offset(-textPainter.width / 2, -25));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant ViewfinderPainter oldDelegate) =>
+      oldDelegate.viewIndex != viewIndex || oldDelegate.isCapturing != isCapturing;
+}
+

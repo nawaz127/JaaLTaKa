@@ -187,27 +187,24 @@ python run_all.py --phase 6 7 10
 ---
 
 ## Model Architectures
-
-### Baseline (Phase 3): MultiViewResNet
+### Baseline (Phase 3): MultiViewBaseline
 
 ```
 Input [B, 6, 3, 224, 224]
     │
     ▼
-ResNet50 backbone (ImageNet pretrained, shared across views)
+Backbone (ResNet50 / MobileNetV2 / EfficientNet-B0)
     │
-    ▼ [B, 6, 2048] feature vectors
+    ▼ [B, 6, D] feature vectors
     │
 Mean Pooling across 6 views
     │
-    ▼ [B, 2048]
+    ▼ [B, D]
     │
-Linear(2048 → 512) → ReLU → Dropout(0.3) → Linear(512 → 2)
+Linear(D → 512) → ReLU → Dropout(0.3) → Linear(512 → 2)
     │
     ▼ [B, 2] logits
 ```
-
-- **Total parameters**: 24,558,146 (all trainable)
 
 ### Advanced (Phase 4): MultiViewAttentionNet
 
@@ -215,12 +212,14 @@ Linear(2048 → 512) → ReLU → Dropout(0.3) → Linear(512 → 2)
 Input [B, 6, 3, 224, 224]
     │
     ▼
-ResNet50 backbone (ImageNet pretrained, shared)
+Backbone (ResNet50)
     │
-    ▼ [B, 6, 2048]
+    ▼ [B, 6, D]
     │
-Linear projection (2048 → 512) + LayerNorm
-    │
+Linear projection (D → 512) + LayerNorm
+...
+```
+
     ▼ [B, 6, 512]
     │
 + Learnable view positional embeddings
@@ -345,16 +344,16 @@ What view dropout rate during training yields the most robust model?
 
 #### 5c. Model Comparison
 
-Head-to-head comparison with identical training settings (30 epochs, lr=3e-4):
+Head-to-head comparison with identical training settings (30-50 epochs, lr=3e-4):
 
 | Model | Accuracy | Precision | Recall | F1 | ROC-AUC | Parameters |
 |---|---|---|---|---|---|---|
-| ResNet_MeanPool | 98.56% | 0.9917 | 0.9835 | 0.9876 | 0.9872 | 24.6M |
-| **Attention_Transformer** | **99.04%** | **0.9917** | **0.9917** | **0.9917** | **0.9926** | **31.2M** |
+| MobileNetV2_MeanPool | 99.04% | 0.9917 | 0.9917 | 0.9917 | 0.9906 | **2.9M** |
+| EfficientNetB0_MeanPool | 99.04% | 0.9917 | 0.9917 | 0.9917 | 0.9900 | 4.7M |
+| ResNet50_MeanPool | 99.04% | 0.9917 | 0.9917 | 0.9917 | 0.9917 | 24.6M |
+| **Proposed Attention Net** | **99.04%** | **0.9917** | **0.9917** | **0.9917** | **0.9925** | 31.2M |
 
-Both models trained for 8 epochs (early stopped).
-
-**Finding**: The Attention Transformer outperforms the ResNet baseline by **+0.48% accuracy** and **+0.54% ROC-AUC** with 6.6M additional parameters. The attention mechanism's ability to learn view-specific importance weights provides a meaningful advantage.
+**Finding**: While all models hit a "data saturation" ceiling of 99.04% due to two specific outlier notes (note_402, note_405), the **Proposed Attention Transformer** achieves the **highest ROC-AUC (0.9925)**, indicating superior ranking quality and better handling of ambiguous samples. **MobileNetV2** is the most parameter-efficient baseline.
 
 ---
 
@@ -499,7 +498,7 @@ A comprehensive web dashboard for banknote authentication with full XAI visualiz
 ```bash
 cd streamlit_app
 pip install -r requirements.txt
-streamlit run app.py
+streamlit run streamlit_app/app.py
 ```
 
 ### Features

@@ -5,21 +5,20 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
-import 'package:image/image.dart' as img;
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../models/auth_result.dart';
 
 /// ONNX Runtime inference service for banknote authentication.
+/// Enhanced with memory-efficient preprocessing and Isolate support.
 /// Developed by Shah Nawaz.
 class OnnxService {
   static const int inputSize = 224;
   static const int numViews = 6;
   static const int numChannels = 3;
-  static const String modelDownloadUrl = 'https://github.com/nawaz127/JaaLTaKa/raw/main/outputs/exports/jaaltaka_attention_int8.onnx';
+  static const String modelAssetPath = 'assets/models/jaaltaka_attention.onnx';
 
   // ImageNet normalization constants
   static const List<double> mean = [0.485, 0.456, 0.406];
@@ -55,73 +54,32 @@ class OnnxService {
   Future<void> loadModel({void Function(double)? onProgress}) async {
     if (_isLoaded) return;
     try {
-      final modelPath = await _downloadModelIfNotExists(onProgress);
+      final modelPath = await _copyAssetToLocal(onProgress);
       final sessionOptions = OrtSessionOptions();
       _session = OrtSession.fromFile(File(modelPath), sessionOptions);
       _isLoaded = true;
     } catch (e) {
       _isLoaded = false;
+      debugPrint('Error loading model: $e');
       rethrow;
     }
   }
 
-  Future<String> _downloadModelIfNotExists(void Function(double)? onProgress) async {
+  Future<String> _copyAssetToLocal(void Function(double)? onProgress) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final modelFile = File('${appDir.path}/jaaltaka_attention_int8.onnx');
+    final modelFile = File('${appDir.path}/jaaltaka_attention.onnx');
 
     if (await modelFile.exists()) {
-      final size = await modelFile.length();
-      if (size > 10 * 1024 * 1024) { // Roughly 10MB sanity check
-        onProgress?.call(1.0);
-        return modelFile.path;
-      }
+      return modelFile.path;
     }
 
-    // Download model
-    debugPrint('Downloading model from GitHub...');
-    final request = http.Request('GET', Uri.parse(modelDownloadUrl));
-    final response = await http.Client().send(request);
-
-    final totalBytes = response.contentLength ?? 30000000; // Fallback 30MB
-    int receivedBytes = 0;
-    final List<int> bytes = [];
-
-    await for (final chunk in response.stream) {
-      bytes.addAll(chunk);
-      receivedBytes += chunk.length;
-      onProgress?.call(receivedBytes / totalBytes);
-    }
-
+    onProgress?.call(0.1);
+    final ByteData data = await rootBundle.load(modelAssetPath);
+    final List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
     await modelFile.writeAsBytes(bytes);
-    debugPrint('Model downloaded to: ${modelFile.path}');
+    onProgress?.call(1.0);
+    
     return modelFile.path;
-  }
-
-  Future<String> _extractSerialNumber(String imagePath) async {
-    try {
-      final inputImage = InputImage.fromFilePath(imagePath);
-      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-      await textRecognizer.close();
-
-      // Look for a string that looks like a serial number (e.g., contains numbers and maybe some letters)
-      String bestMatch = '';
-      for (TextBlock block in recognizedText.blocks) {
-        for (TextLine line in block.lines) {
-          final text = line.text.trim();
-          // Heuristic: Serials often have digits and are somewhat long
-          if (text.contains(RegExp(r'\d')) && text.length >= 4) {
-            if (text.length > bestMatch.length) {
-              bestMatch = text;
-            }
-          }
-        }
-      }
-      return bestMatch.isNotEmpty ? bestMatch : 'Unknown';
-    } catch (e) {
-      debugPrint('OCR Error: $e');
-      return 'Unknown';
-    }
   }
 
   /// Parse ONNX output safely handling List<List<double>>, List<List<num>>, flat list.
@@ -168,24 +126,14 @@ class OnnxService {
     if (!_isLoaded || _session == null) {
       throw Exception('Model not loaded. Call loadModel() first.');
     }
-    if (viewPaths.length != numViews) {
-      throw Exception('Expected $numViews view images, got ${viewPaths.length}');
-    }
 
     final stopwatch = Stopwatch()..start();
 
-    // 1. Preprocess all 6 views
-    final inputTensor = await _preprocessViews(viewPaths);
+    // PERFORMANCE: Preprocess images in a separate isolate
+    final inputTensor = await compute(_preprocessViewsStatic, viewPaths);
 
-    // 2. Run inference
     final probs = _runRawInference(inputTensor);
-
-    // 3. OCR on View 5 (index 4) for Serial Number
     final serialNumber = await _extractSerialNumber(viewPaths[4]);
-
-    // probs[0] = Fake probability, probs[1] = Real probability
-    final isAuthentic = probs[1] > probs[0];
-    final confidence = isAuthentic ? probs[1] : probs[0];
 
     final viewResults = List.generate(numViews, (i) {
       return ViewResult(
@@ -198,8 +146,8 @@ class OnnxService {
     stopwatch.stop();
 
     return AuthenticationResult(
-      isAuthentic: isAuthentic,
-      confidence: confidence,
+      isAuthentic: probs[1] > probs[0],
+      confidence: probs[1] > probs[0] ? probs[1] : probs[0],
       classProbabilities: {'Fake': probs[0], 'Real': probs[1]},
       inferenceTimeMs: stopwatch.elapsedMilliseconds.toDouble(),
       viewResults: viewResults,
@@ -207,21 +155,45 @@ class OnnxService {
     );
   }
 
+  /// OCR with Bengali numeral support.
+  Future<String> _extractSerialNumber(String imagePath) async {
+    try {
+      final inputImage = InputImage.fromFilePath(imagePath);
+      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+      await textRecognizer.close();
+
+      String bestMatch = '';
+      final serialRegex = RegExp(r'[0-9০-৯]');
+      
+      for (TextBlock block in recognizedText.blocks) {
+        for (TextLine line in block.lines) {
+          final text = line.text.trim();
+          if (text.contains(serialRegex) && text.length >= 4) {
+            if (text.length > bestMatch.length) {
+              bestMatch = text;
+            }
+          }
+        }
+      }
+      return bestMatch.isNotEmpty ? bestMatch : 'Unknown';
+    } catch (e) {
+      debugPrint('OCR Error: $e');
+      return 'Unknown';
+    }
+  }
+
   /// Generate occlusion sensitivity heatmaps for all 6 views.
-  /// Divides each view into a 7×7 grid, occludes each cell, measures
-  /// confidence drop → heatmap. Returns list of 6 heatmaps (7×7 grids).
   Future<OcclusionResult> runOcclusionSensitivity(
     List<String> viewPaths, {
     void Function(int current, int total)? onProgress,
   }) async {
-    if (!_isLoaded || _session == null) {
-      throw Exception('Model not loaded.');
-    }
+    if (!_isLoaded || _session == null) throw Exception('Model not loaded.');
 
     final stopwatch = Stopwatch()..start();
     
-    // Preprocess views once
-    final Float32List baselineTensor = await _preprocessViews(viewPaths);
+    // We use compute for preprocessing but run inference on main thread for session access
+    final Float32List baselineTensor = await compute(_preprocessViewsStatic, viewPaths);
     final baselineProbs = _runRawInference(baselineTensor);
     final predIdx = baselineProbs[1] > baselineProbs[0] ? 1 : 0;
     final baselineConf = baselineProbs[predIdx];
@@ -230,18 +202,12 @@ class OnnxService {
     final totalOps = numViews * occlusionGridSize * occlusionGridSize;
     int completedOps = 0;
 
-    // We will modify the baselineTensor in-place to save memory
     final workingTensor = Float32List.fromList(baselineTensor);
     final backup = Float32List(numChannels * cellSize * cellSize);
-
     final heatmaps = <List<List<double>>>[];
 
     for (int v = 0; v < numViews; v++) {
-      final grid = List.generate(
-        occlusionGridSize,
-        (_) => List.filled(occlusionGridSize, 0.0),
-      );
-
+      final grid = List.generate(occlusionGridSize, (_) => List.filled(occlusionGridSize, 0.0));
       final viewBase = v * numChannels * inputSize * inputSize;
 
       for (int gy = 0; gy < occlusionGridSize; gy++) {
@@ -251,67 +217,55 @@ class OnnxService {
           final yEnd = (gy == occlusionGridSize - 1) ? inputSize : yStart + cellSize;
           final xEnd = (gx == occlusionGridSize - 1) ? inputSize : xStart + cellSize;
 
-          // 1. Backup the original region and fill with 0 (occlusion)
-          int backupIdx = 0;
+          int bIdx = 0;
           for (int c = 0; c < numChannels; c++) {
-            final channelBase = viewBase + c * inputSize * inputSize;
+            final cBase = viewBase + c * inputSize * inputSize;
             for (int y = yStart; y < yEnd; y++) {
-              final rowBase = channelBase + y * inputSize;
               for (int x = xStart; x < xEnd; x++) {
-                final idx = rowBase + x;
-                backup[backupIdx++] = workingTensor[idx];
-                workingTensor[idx] = 0.0; // Occlude
+                final idx = cBase + y * inputSize + x;
+                backup[bIdx++] = workingTensor[idx];
+                workingTensor[idx] = 0.0; 
               }
             }
           }
 
-          // 2. Run inference
           final occProbs = _runRawInference(workingTensor);
-          final drop = baselineConf - occProbs[predIdx];
-          grid[gy][gx] = drop.clamp(0.0, 1.0);
+          grid[gy][gx] = (baselineConf - occProbs[predIdx]).clamp(0.0, 1.0);
 
-          // 3. Restore from backup
-          backupIdx = 0;
+          bIdx = 0;
           for (int c = 0; c < numChannels; c++) {
-            final channelBase = viewBase + c * inputSize * inputSize;
+            final cBase = viewBase + c * inputSize * inputSize;
             for (int y = yStart; y < yEnd; y++) {
-              final rowBase = channelBase + y * inputSize;
               for (int x = xStart; x < xEnd; x++) {
-                workingTensor[rowBase + x] = backup[backupIdx++];
+                workingTensor[cBase + y * inputSize + x] = backup[bIdx++];
               }
             }
           }
 
           completedOps++;
-          if (completedOps % 5 == 0) {
+          if (completedOps % 10 == 0) {
             onProgress?.call(completedOps, totalOps);
-            // Crucial: Let the UI thread breathe and Garbage Collector work
-            await Future.delayed(const Duration(milliseconds: 10));
+            await Future.delayed(const Duration(milliseconds: 1));
           }
         }
       }
       heatmaps.add(grid);
     }
 
-    // Normalize each heatmap to [0,1]
+    // Normalize
     for (int v = 0; v < numViews; v++) {
       double maxVal = 0.0;
-      for (final row in heatmaps[v]) {
-        for (final val in row) {
-          if (val > maxVal) maxVal = val;
-        }
-      }
+      for (final row in heatmaps[v]) for (final val in row) if (val > maxVal) maxVal = val;
       if (maxVal > 0) {
-        for (int gy = 0; gy < occlusionGridSize; gy++) {
-          for (int gx = 0; gx < occlusionGridSize; gx++) {
-            heatmaps[v][gy][gx] /= maxVal;
+        for (int r = 0; r < occlusionGridSize; r++) {
+          for (int c = 0; c < occlusionGridSize; c++) {
+            heatmaps[v][r][c] /= maxVal;
           }
         }
       }
     }
 
     stopwatch.stop();
-
     return OcclusionResult(
       heatmaps: heatmaps,
       predictionIndex: predIdx,
@@ -320,50 +274,38 @@ class OnnxService {
     );
   }
 
-  /// Preprocess image: decode → EXIF rotate → force uint8 → resize → normalize.
-  img.Image _preprocessImage(Uint8List bytes) {
-    var decoded = img.decodeImage(bytes);
-    if (decoded == null) throw Exception('Failed to decode image');
-
-    // FIX: Apply EXIF orientation (camera photos are often stored rotated)
-    decoded = img.bakeOrientation(decoded);
-
-    // FIX: Force uint8 format so pixel.r/g/b return 0-255 integers
-    decoded = decoded.convert(format: img.Format.uint8, numChannels: 3);
-
-    // Resize to 224×224
-    return img.copyResize(decoded, width: inputSize, height: inputSize);
-  }
-
-  /// Preprocess 6 view images into a Float32List tensor [1, 6, 3, 224, 224].
-  Future<Float32List> _preprocessViews(List<String> viewPaths) async {
-    final totalSize = 1 * numViews * numChannels * inputSize * inputSize;
-    final tensor = Float32List(totalSize);
+  /// Memory-efficient preprocessing in Isolate.
+  static Future<Float32List> _preprocessViewsStatic(List<String> paths) async {
+    final tensor = Float32List(numViews * numChannels * inputSize * inputSize);
 
     for (int v = 0; v < numViews; v++) {
-      final file = File(viewPaths[v]);
-      final bytes = await file.readAsBytes();
-      final resized = _preprocessImage(bytes);
+      final bytes = await File(paths[v]).readAsBytes();
+      final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      final descriptor = await ui.ImageDescriptor.encoded(buffer);
+      final codec = await descriptor.instantiateCodec(targetWidth: inputSize, targetHeight: inputSize);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
 
-      // Fill tensor in CHW layout with ImageNet normalization
-      final baseIdx = v * numChannels * inputSize * inputSize;
-      for (int y = 0; y < inputSize; y++) {
-        for (int x = 0; x < inputSize; x++) {
-          final pixel = resized.getPixel(x, y);
-          final r = pixel.r.toInt() / 255.0;
-          final g = pixel.g.toInt() / 255.0;
-          final b = pixel.b.toInt() / 255.0;
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (byteData == null) continue;
 
-          tensor[baseIdx + 0 * inputSize * inputSize + y * inputSize + x] =
-              (r - mean[0]) / std[0];
-          tensor[baseIdx + 1 * inputSize * inputSize + y * inputSize + x] =
-              (g - mean[1]) / std[1];
-          tensor[baseIdx + 2 * inputSize * inputSize + y * inputSize + x] =
-              (b - mean[2]) / std[2];
-        }
+      final rgba = byteData.buffer.asUint8List();
+      final base = v * numChannels * inputSize * inputSize;
+
+      for (int i = 0; i < inputSize * inputSize; i++) {
+        final r = rgba[i * 4] / 255.0;
+        final g = rgba[i * 4 + 1] / 255.0;
+        final b = rgba[i * 4 + 2] / 255.0;
+
+        tensor[base + 0 * inputSize * inputSize + i] = (r - mean[0]) / std[0];
+        tensor[base + 1 * inputSize * inputSize + i] = (g - mean[1]) / std[2];
+        tensor[base + 2 * inputSize * inputSize + i] = (b - mean[2]) / std[2];
       }
+      
+      image.dispose();
+      descriptor.dispose();
+      buffer.dispose();
     }
-
     return tensor;
   }
 
@@ -375,9 +317,8 @@ class OnnxService {
   }
 }
 
-/// Result of occlusion sensitivity analysis.
 class OcclusionResult {
-  final List<List<List<double>>> heatmaps; // [view][row][col]
+  final List<List<List<double>>> heatmaps;
   final int predictionIndex;
   final double baselineConfidence;
   final double timeMs;

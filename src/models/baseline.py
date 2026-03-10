@@ -41,12 +41,14 @@ class ClassifierHead(nn.Module):
         return self.net(x)
 
 
-class MultiViewResNet(nn.Module):
+class MultiViewBaseline(nn.Module):
     """
-    Baseline multi-view model with ResNet50 backbone and mean pooling.
+    Baseline multi-view model with configurable backbone and mean pooling.
 
     Parameters
     ----------
+    backbone_name : str
+        Choice of 'resnet50', 'mobilenet_v2', or 'efficientnet_b0'.
     num_views : int
         Number of input views (default 6).
     num_classes : int
@@ -59,6 +61,7 @@ class MultiViewResNet(nn.Module):
 
     def __init__(
         self,
+        backbone_name: str = BACKBONE,
         num_views: int = NUM_VIEWS,
         num_classes: int = NUM_CLASSES,
         pretrained: bool = True,
@@ -66,14 +69,35 @@ class MultiViewResNet(nn.Module):
     ):
         super().__init__()
         self.num_views = num_views
+        self.backbone_name = backbone_name.lower()
 
         # Load backbone
-        weights = models.ResNet50_Weights.DEFAULT if pretrained else None
-        backbone = models.resnet50(weights=weights)
-
-        # Remove final FC layer — keep everything up to avgpool
-        self.backbone = nn.Sequential(*list(backbone.children())[:-1])
-        self.feature_dim = FEATURE_DIM  # 2048 for ResNet50
+        if self.backbone_name == "resnet50":
+            weights = models.ResNet50_Weights.DEFAULT if pretrained else None
+            backbone = models.resnet50(weights=weights)
+            # Remove final FC layer — keep everything up to avgpool
+            self.backbone = nn.Sequential(*list(backbone.children())[:-1])
+            self.feature_dim = 2048
+        elif self.backbone_name == "mobilenet_v2":
+            weights = models.MobileNet_V2_Weights.DEFAULT if pretrained else None
+            backbone = models.mobilenet_v2(weights=weights)
+            # Keep features + global avg pool
+            self.backbone = nn.Sequential(
+                backbone.features,
+                nn.AdaptiveAvgPool2d((1, 1))
+            )
+            self.feature_dim = 1280
+        elif self.backbone_name == "efficientnet_b0":
+            weights = models.EfficientNet_B0_Weights.DEFAULT if pretrained else None
+            backbone = models.efficientnet_b0(weights=weights)
+            # Keep features + global avg pool
+            self.backbone = nn.Sequential(
+                backbone.features,
+                nn.AdaptiveAvgPool2d((1, 1))
+            )
+            self.feature_dim = 1280
+        else:
+            raise ValueError(f"Unsupported backbone: {backbone_name}")
 
         if freeze_backbone:
             for param in self.backbone.parameters():
@@ -101,9 +125,9 @@ class MultiViewResNet(nn.Module):
         B, V, C, H, W = x.shape
         # Merge batch and view dims
         x = x.view(B * V, C, H, W)             # (B*V, 3, H, W)
-        features = self.backbone(x)              # (B*V, 2048, 1, 1)
-        features = features.view(B * V, -1)      # (B*V, 2048)
-        features = features.view(B, V, -1)       # (B, V, 2048)
+        features = self.backbone(x)              # (B*V, D, 1, 1)
+        features = features.view(B * V, -1)      # (B*V, D)
+        features = features.view(B, V, -1)       # (B, V, D)
         return features
 
     def fuse(self, features: torch.Tensor) -> torch.Tensor:

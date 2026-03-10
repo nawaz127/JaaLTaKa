@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Optional, List
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -169,13 +170,56 @@ def plot_training_curves(
     return path
 
 
+def identify_misclassifications(
+    results: Dict[str, np.ndarray],
+    loader: DataLoader,
+    experiment_name: str = "model",
+) -> pd.DataFrame:
+    """Identify and log misclassified samples (note IDs)."""
+    y_true = results["labels"]
+    y_pred = results["preds"]
+    y_prob = results["probs"]
+    
+    # Get the original dataframe from the dataset
+    dataset = loader.dataset
+    if hasattr(dataset, "df"):
+        df = dataset.df.copy()
+        # Since we use shuffle=False for eval, indices should align
+        df["predicted"] = y_pred
+        df["prob_fake"] = y_prob[:, 0]
+        df["prob_real"] = y_prob[:, 1]
+        
+        misclassified = df[df["label"] != df["predicted"]].copy()
+        
+        if len(misclassified) > 0:
+            logger.info(f"\n--- Misclassified Samples ({len(misclassified)}) ---")
+            # Format output for logging
+            summary = misclassified[["note_id", "label", "predicted", "prob_real"]].copy()
+            summary["true_label"] = summary["label"].apply(lambda x: CLASS_NAMES[int(x)])
+            summary["pred_label"] = summary["predicted"].apply(lambda x: CLASS_NAMES[int(x)])
+            
+            logger.info("\n" + summary[["note_id", "true_label", "pred_label", "prob_real"]].to_string(index=False))
+            
+            # Save to CSV
+            csv_path = FIGURE_DIR.parent / "logs" / f"{experiment_name}_misclassified.csv"
+            misclassified.to_csv(csv_path, index=False)
+            logger.info(f"\nSaved misclassified list to: {csv_path}")
+        else:
+            logger.info("\nNo misclassifications found on this set! (100% Accuracy)")
+            
+        return misclassified
+    else:
+        logger.warning("Dataset does not have a 'df' attribute; cannot identify misclassified samples by ID.")
+        return pd.DataFrame()
+
+
 def full_evaluation(
     model: nn.Module,
     test_loader: DataLoader,
     experiment_name: str = "model",
     history: Optional[Dict[str, list]] = None,
 ) -> Dict[str, float]:
-    """Run full evaluation pipeline: metrics + all plots."""
+    """Run full evaluation pipeline: metrics + all plots + misclassifications."""
     logger.info(f"\n{'='*60}")
     logger.info(f"Full Evaluation: {experiment_name}")
     logger.info(f"{'='*60}")
@@ -185,6 +229,9 @@ def full_evaluation(
 
     plot_confusion_matrix(results, f"{experiment_name}_confusion.png")
     plot_roc_curve(results, f"{experiment_name}_roc.png")
+    
+    # Identify misclassified samples
+    identify_misclassifications(results, test_loader, experiment_name)
 
     if history:
         plot_training_curves(history, f"{experiment_name}_curves.png")

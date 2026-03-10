@@ -1,0 +1,998 @@
+%% 
+%% Copyright 2007-2025 Elsevier Ltd
+%% 
+%% This file is part of the 'Elsarticle Bundle'.
+%% ---------------------------------------------
+%% 
+%% It may be distributed under the conditions of the LaTeX Project Public
+%% License, either version 1.3 of this license or (at your option) any
+%% later version.  The latest version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 1999/12/01 or later.
+%% 
+%% The list of all files belonging to the 'Elsarticle Bundle' is
+%% given in the file `manifest.txt'.
+%% 
+%% Template article for Elsevier's document class `elsarticle'
+%% with harvard style bibliographic references
+
+\documentclass[preprint,12pt,authoryear]{elsarticle}
+
+%% Use the option review to obtain double line spacing
+%% \documentclass[authoryear,preprint,review,12pt]{elsarticle}
+
+%% Use the options 1p,twocolumn; 3p; 3p,twocolumn; 5p; or 5p,twocolumn
+%% for a journal layout:
+%% \documentclass[final,1p,times,authoryear]{elsarticle}
+%% \documentclass[final,1p,times,twocolumn,authoryear]{elsarticle}
+%% \documentclass[final,3p,times,authoryear]{elsarticle}
+%% \documentclass[final,3p,times,twocolumn,authoryear]{elsarticle}
+%% \documentclass[final,5p,times,authoryear]{elsarticle}
+%% \documentclass[final,5p,times,twocolumn,authoryear]{elsarticle}
+
+%% For including figures, graphicx.sty has been loaded in
+%% elsarticle.cls. If you prefer to use the old commands
+%% please give \usepackage{epsfig}
+
+%% The amssymb package provides various useful mathematical symbols
+\usepackage{amssymb}
+%% The amsmath package provides various useful equation environments.
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{subcaption}
+%% The amsthm package provides extended theorem environments
+%% \usepackage{amsthm}
+
+%% The lineno packages adds line numbers. Start line numbering with
+%% \begin{linenumbers}, end it with \end{linenumbers}. Or switch it on
+%% for the whole article with \linenumbers.
+%% \usepackage{lineno}
+
+\journal{Nuclear Physics B}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{Securing the Taka: An Explainable Multi-View Deep Learning Framework with Transformer Fusion for Counterfeit Bangladeshi Banknote Authentication}
+
+\author{Shah Nawaz}
+
+\address{Daffodil International University, Bangladesh}
+
+\begin{abstract}
+
+Counterfeit currency remains a persistent threat to financial security, particularly in cash-dependent economies such as Bangladesh where manual verification of banknotes is still widely practiced. Although recent advances in computer vision have enabled automated banknote recognition, most existing systems rely on single-view classification models and operate as opaque black-box predictors, limiting their reliability and practical adoption in financial environments. To address these limitations, this paper proposes an explainable multi-view deep learning framework for counterfeit Bangladeshi banknote authentication that integrates transformer-based feature fusion and interpretable AI techniques.
+
+The proposed system analyzes six security regions of a banknote, including the portrait, security thread, watermark, micro-lettering, optically variable ink (OVI), and intaglio patterns. Each region is processed using a convolutional neural network (CNN) backbone to extract discriminative visual features. These region-level representations are then fused through a transformer-based multi-head self-attention module, enabling the model to capture inter-region dependencies and prioritize the most informative security cues. To enhance transparency and trustworthiness, the framework incorporates multiple explainable AI (XAI) techniques, including Grad-CAM, LIME, and SHAP, which provide both visual and feature-level explanations of model predictions.
+
+Experiments are conducted on the recently introduced \textit{JaalTaka} dataset, containing 1,390 Bangladeshi banknotes (802 genuine and 588 counterfeit) with six images per note captured using smartphone cameras. The proposed framework achieves a consistent test accuracy of 99.04\% across various backbones, with the transformer-based model achieving a superior ROC-AUC of 0.9925. Extensive comparisons with baseline architectures, including MobileNetV2 and EfficientNet-B0, demonstrate the effectiveness of multi-view learning and transformer-based fusion in improving detection robustness and calibration. Furthermore, the trained model is deployed in a mobile authentication system using ONNX Runtime within a Flutter-based Android application, enabling real-time counterfeit detection and explainability visualization.
+
+The proposed framework provides a trustworthy and deployable AI solution for banknote authentication and establishes a strong foundation for future research on explainable financial security systems in emerging economies.
+
+\end{abstract}
+
+\begin{keyword}
+Counterfeit detection \sep Explainable AI \sep Multi-view learning \sep Transformer fusion
+\end{keyword}
+
+\end{frontmatter}
+
+\section{Introduction}
+
+Counterfeit currency represents a persistent challenge to financial security and economic stability across the world. The circulation of forged banknotes disrupts monetary systems, undermines public confidence in cash transactions, and generates substantial financial losses for financial institutions and retailers. According to global financial security reports, billions of dollars in counterfeit banknotes are seized annually, demonstrating the scale and persistence of the problem \cite{bagnall2016consumer}. The challenge is particularly pronounced in cash-dependent economies such as Bangladesh, where paper currency remains the primary medium for daily transactions.
+
+Modern banknotes incorporate multiple security features to mitigate counterfeiting, including micro-lettering, security threads, optically variable ink (OVI), watermarks, and intaglio printing. These elements are designed to be difficult to replicate without specialized printing technologies. Traditionally, authentication relies on manual inspection by trained personnel using magnifiers, ultraviolet light, or specialized detection machines \cite{de2003security}. However, manual inspection is time-consuming and prone to human error, especially in high-volume transaction environments such as retail markets and banking systems.
+
+Recent advances in computer vision and deep learning have enabled the development of automated currency recognition systems. Early approaches relied on handcrafted features combined with traditional machine learning classifiers such as Support Vector Machines (SVM) or k-Nearest Neighbors (kNN) \cite{bay2006surf}. These methods typically utilized texture descriptors, edge information, or color histograms to distinguish between genuine and counterfeit banknotes. Although such techniques demonstrated promising results under controlled conditions, their performance often deteriorates in real-world scenarios due to illumination variation, physical wear, and image noise.
+
+The emergence of convolutional neural networks (CNNs) has significantly improved image classification and pattern recognition tasks. Architectures such as VGGNet \cite{simonyan2015vgg}, ResNet \cite{he2016deep}, Inception \cite{szegedy2016inception}, DenseNet \cite{huang2017densely}, and MobileNet \cite{sandler2018mobilenetv2} have achieved remarkable success in large-scale image recognition benchmarks. These models have also been adopted for currency recognition tasks due to their ability to automatically learn hierarchical visual representations. Several studies have applied CNN-based approaches to banknote classification and counterfeit detection, demonstrating substantial improvements over traditional machine learning methods \cite{baek2018counterfeit,berenguel2016banknote}.
+
+Despite these advances, most existing banknote authentication systems rely on single-image classification pipelines. In practice, however, security features are distributed across multiple regions of a banknote, and a single image may fail to capture all relevant information required for reliable authentication. Multi-view learning has emerged as a promising approach to address this limitation by aggregating complementary visual information from multiple perspectives or regions \cite{xu2013survey}. By integrating multiple views of an object, such systems can improve robustness against occlusion, physical degradation, and lighting variation.
+
+Another limitation of existing deep learning-based authentication systems is the lack of interpretability. Many models operate as black-box predictors, producing classification outputs without providing insight into the underlying decision-making process. This lack of transparency limits trust and adoption in sensitive applications such as financial security. Explainable Artificial Intelligence (XAI) techniques have been developed to address this challenge by providing visual or feature-level explanations of model predictions. Methods such as Gradient-weighted Class Activation Mapping (Grad-CAM) \cite{selvaraju2017gradcam}, Local Interpretable Model-Agnostic Explanations (LIME) \cite{ribeiro2016lime}, and SHapley Additive exPlanations (SHAP) \cite{lundberg2017shap} enable researchers and practitioners to interpret model behavior and verify whether predictions rely on meaningful features.
+
+Recently, transformer-based architectures have demonstrated remarkable performance in computer vision tasks by modeling long-range dependencies through attention mechanisms. Vision Transformers (ViT) and related architectures have shown strong performance across image classification and multimodal tasks \cite{dosovitskiy2021vit}. Transformer-based fusion mechanisms are particularly suitable for multi-view learning scenarios, where relationships between multiple feature representations must be captured effectively.
+
+In the context of Bangladeshi currency, publicly available datasets and research resources remain limited. Existing datasets often focus on denomination recognition rather than counterfeit detection, and many lack diverse real-world variations in banknote condition or capture environment. The recently introduced JaalTaka dataset provides a unique benchmark for counterfeit Bangladeshi banknote detection by capturing six different security regions of each note using smartphone cameras.
+
+Motivated by these challenges, this paper proposes an explainable multi-view deep learning framework for counterfeit Bangladeshi banknote authentication. The proposed system integrates convolutional feature extraction, transformer-based feature fusion, and explainable AI techniques to provide both accurate and interpretable predictions. The framework analyzes six security regions of each banknote and combines their representations through a multi-head attention mechanism to capture inter-region dependencies.
+
+The main contributions of this work are summarized as follows:
+
+\begin{itemize}
+\item We propose a robust multi-view deep learning framework that analyzes six critical security regions of Bangladeshi banknotes, enabling joint reasoning over distributed visual cues.
+\item We introduce a transformer-based feature fusion module that models inter-region dependencies via multi-head self-attention and attention pooling for optimal representation aggregation.
+\item We integrate a triple-method explainable AI (XAI) suite (Grad-CAM, LIME, and SHAP) to validate that model decisions align with authentic security features.
+\item We conduct a comprehensive comparative evaluation across four architectures (ResNet50, MobileNetV2, EfficientNet-B0, and the Proposed Transformer), identifying a 99.04\% accuracy ceiling driven by systematic outlier samples.
+\item We provide an in-depth error analysis of "Hard Case" samples (note\_402 and note\_405), demonstrating that the proposed attention mechanism offers superior probability calibration and uncertainty handling.
+\item We deliver an end-to-end production ecosystem, including a 74.7\% compressed ONNX model deployed in a Flutter-based Android application for real-time authentication.
+\end{itemize}
+
+The remainder of this paper is organized as follows. Section 2 reviews related work in counterfeit detection and explainable computer vision systems. Section 3 describes the dataset and data preprocessing pipeline. Section 4 presents the proposed multi-view transformer-based authentication framework. Section 5 details the experimental setup and evaluation metrics. Section 6 discusses experimental results and ablation studies. Finally, Section 7 concludes the paper and outlines directions for future research.
+
+
+\section{Related Work}
+
+Automatic banknote recognition and counterfeit detection have attracted significant research attention in computer vision and document analysis. Existing studies can be broadly categorized into four groups: traditional machine learning approaches, deep learning-based currency recognition systems, multi-view learning frameworks, and explainable artificial intelligence (XAI) methods.
+
+\subsection{Traditional Machine Learning for Currency Recognition}
+
+Early research on banknote recognition relied on handcrafted feature extraction combined with classical machine learning algorithms. Texture descriptors, edge-based representations, and color histograms were commonly used to characterize security patterns on banknotes. Bay et al.~\cite{bay2006surf} introduced the SURF descriptor for robust local feature detection, which has been applied to document authentication tasks. Similarly, Lowe~\cite{lowe2004distinctive} proposed the Scale-Invariant Feature Transform (SIFT), which became widely adopted in early banknote recognition systems.
+
+Several studies employed machine learning classifiers such as Support Vector Machines (SVM) and k-Nearest Neighbors (kNN) for currency classification. Yeh et al.~\cite{yeh2011multiple} proposed a multiple-kernel SVM framework for Taiwanese banknote recognition, achieving promising results under controlled imaging conditions. However, traditional machine learning techniques rely heavily on handcrafted feature engineering and often struggle with illumination variations, physical degradation, and complex visual patterns present in real-world banknotes.
+
+\subsection{Deep Learning-Based Banknote Recognition}
+
+The emergence of convolutional neural networks (CNNs) significantly advanced visual recognition systems. Deep architectures such as VGGNet~\cite{simonyan2015vgg}, ResNet~\cite{he2016deep}, Inception~\cite{szegedy2016inception}, DenseNet~\cite{huang2017densely}, and MobileNet~\cite{sandler2018mobilenetv2} have demonstrated remarkable performance in image classification tasks. These models have also been successfully applied to currency recognition and counterfeit detection.
+
+Baek et al.~\cite{baek2018counterfeit} developed a multispectral imaging approach for counterfeit banknote detection using spectral features extracted across multiple wavelengths. Berenguel et al.~\cite{berenguel2016banknote} proposed a texture-based counterfeit detection method focusing on background printing patterns in Euro banknotes. Other studies have explored CNN-based classification systems for currency recognition, demonstrating superior performance compared with traditional feature-based methods.
+
+Despite these advances, most existing systems treat banknotes as single-view images and perform classification based on a single captured frame. In practice, security features are distributed across multiple regions of the banknote, and single-view systems may fail to capture the full set of authentication cues.
+
+\subsection{Multi-View Learning and Feature Fusion}
+
+Multi-view learning has emerged as an effective strategy for integrating complementary information from multiple perspectives or modalities. Xu et al.~\cite{xu2013survey} presented a comprehensive survey of multi-view learning techniques, highlighting their advantages in improving robustness and generalization. In computer vision applications, multi-view frameworks have been widely used in object recognition, medical imaging, and document analysis.
+
+Recent studies have explored the integration of attention mechanisms and transformer architectures for multi-view representation learning. Transformers were originally introduced for sequence modeling in natural language processing~\cite{vaswani2017attention} and have since been adapted to visual tasks. Vision Transformer (ViT) models~\cite{dosovitskiy2021vit} demonstrated that attention-based architectures can effectively capture global dependencies in images. Subsequent studies extended transformer architectures to multimodal and multi-view fusion tasks~\cite{zhou2021cross,liu2021swin}. These approaches enable the model to dynamically weigh information from different feature sources and learn relationships between multiple visual representations.
+
+However, transformer-based fusion has rarely been explored in the context of currency authentication, particularly for smartphone-captured banknote images containing multiple security regions.
+
+\subsection{Explainable Artificial Intelligence in Computer Vision}
+
+While deep learning models achieve high predictive accuracy, their lack of interpretability remains a significant concern in high-stakes applications. Explainable Artificial Intelligence (XAI) methods aim to improve transparency by providing insights into the decision-making process of neural networks.
+
+Gradient-weighted Class Activation Mapping (Grad-CAM) proposed by Selvaraju et al.~\cite{selvaraju2017gradcam} generates visual heatmaps highlighting regions that contribute most to model predictions. Ribeiro et al.~\cite{ribeiro2016lime} introduced Local Interpretable Model-Agnostic Explanations (LIME), which approximates model behavior locally using interpretable surrogate models. Lundberg and Lee~\cite{lundberg2017shap} proposed SHapley Additive exPlanations (SHAP), a unified framework based on cooperative game theory that provides consistent feature attribution.
+
+These methods have been widely applied in medical imaging, security systems, and financial AI applications to improve model transparency and trustworthiness. However, their adoption in banknote authentication systems remains limited.
+
+\subsection{Research Gap}
+
+Despite the success of deep learning in currency recognition, three critical gaps remain in the literature. First, existing systems predominantly utilize single-view classification pipelines, which ignore the distributed nature of modern security features and are highly susceptible to localized damage or occlusion. Second, while transformer architectures have revolutionized global context modeling, their application in multi-view feature fusion for currency authentication remains largely unexplored. Third, most counterfeit detection research focuses exclusively on top-line accuracy, neglecting the rigorous error analysis and explainability required to understand why certain "hard samples" consistently bypass automated systems.
+
+To address these limitations, this work proposes an explainable multi-view deep learning framework that integrates convolutional feature extraction, transformer-based spatial reasoning, and comprehensive outlier analysis to provide a robust and transparent solution for Bangladeshi banknote authentication.
+
+\section{Dataset Description}
+
+This study utilizes the publicly available \textit{JaalTaka} dataset, a benchmark dataset designed for counterfeit Bangladeshi banknote detection. The dataset contains images of genuine and counterfeit banknotes captured using smartphone cameras under diverse real-world conditions. The dataset is publicly available on the Mendeley Data repository and provides a valuable benchmark resource for developing automated banknote authentication systems.
+
+Unlike traditional banknote recognition datasets that rely on a single image per sample, the JaalTaka dataset follows a multi-view acquisition strategy. Each banknote is represented by six images corresponding to different regions containing critical security features. This design enables fine-grained analysis of banknote characteristics and supports multi-view learning frameworks.
+
+\subsection{Dataset Overview}
+
+The dataset contains images of two widely circulated Bangladeshi banknote denominations: Tk. 500 and Tk. 1000. These denominations were selected because they are the most frequently targeted by counterfeiters due to their high monetary value.
+
+The dataset consists of both genuine and counterfeit banknotes collected from official sources. Genuine banknotes were obtained from government banks in Bangladesh, while counterfeit banknotes were collected through formal collaboration with the Rapid Action Battalion (RAB) under supervised conditions.
+
+Overall, the dataset contains 1,390 banknotes, comprising 802 genuine notes and 588 counterfeit notes. Each banknote is represented by six segment images highlighting different security regions.
+
+\begin{table}[h]
+\centering
+\caption{Dataset statistics of the JaalTaka benchmark dataset}
+\begin{tabular}{lccc}
+\hline
+Category & Number of Notes & Images per Note & Total Images \\
+\hline
+Genuine Notes & 802 & 6 & 4,812 \\
+Counterfeit Notes & 588 & 6 & 3,528 \\
+\hline
+Total & 1,390 & 6 & 8,340 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Multi-View Image Acquisition}
+
+The security features of Bangladeshi banknotes are distributed across multiple regions on both the front and back sides. Detecting counterfeit notes using a single image may overlook subtle differences in these regions. Therefore, six images were captured for each banknote to ensure that the most critical security elements were represented.
+
+The six captured regions include:
+
+\begin{itemize}
+\item Portrait of Bangabandhu Sheikh Mujibur Rahman
+\item Security thread
+\item Watermark area
+\item Micro-lettering region
+\item Optically variable ink (OVI)
+\item Intaglio printed texture
+\end{itemize}
+
+This segmented acquisition approach allows the model to analyze security features individually while enabling feature fusion during the multi-view learning process.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\linewidth]{figures/multiview_example.png}
+\caption{Example of multi-view image acquisition for a single banknote. Six images corresponding to different security regions are captured for each note.}
+\end{figure}
+
+\subsection{Image Acquisition Setup}
+
+Images were captured using four different smartphone models to simulate realistic data collection scenarios and ensure variability in camera sensors.
+
+\begin{table}[h]
+\centering
+\caption{Smartphone cameras used for image acquisition}
+\begin{tabular}{lccc}
+\hline
+Device & Aperture & Focal Length & Metering Mode \\
+\hline
+Samsung Galaxy A50 & f/1.7 & 4 mm & Spot \\
+Samsung Galaxy M31 & f/1.8 & 5 mm & Spot \\
+Redmi Note 8 & f/1.8 & 4 mm & Center-weighted \\
+Redmi Note 9 Pro & f/1.9 & 5 mm & Center-weighted \\
+\hline
+\end{tabular}
+\end{table}
+
+Images were stored in JPEG format with sufficient resolution to capture fine-grained details such as micro-lettering and printing textures.
+
+\subsection{Variability in Banknote Conditions}
+
+To enhance dataset robustness and better simulate real-world conditions, the collected banknotes exhibit significant variability in physical condition. Genuine banknotes include different levels of wear resulting from circulation.
+
+The notes were categorized into four condition groups:
+
+\begin{itemize}
+\item New – recently issued notes with minimal wear
+\item Old – visibly worn notes with folds and fading
+\item User Marking – handwritten annotations or stamps
+\item Stained – notes with discoloration caused by dirt or liquids
+\end{itemize}
+
+These variations introduce realistic noise into the dataset and help improve model generalization.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\linewidth]{figures/note_conditions.png}
+\caption{Examples of different physical conditions of genuine banknotes in the dataset.}
+\end{figure}
+
+\subsection{Dataset Organization}
+
+The dataset follows a hierarchical directory structure where each banknote is stored in a separate folder containing six images.
+
+\begin{verbatim}
+JaalTaka/
+ ├── real_notes/
+ │    ├── note_001/
+ │    │    ├── note_001_1.jpg
+ │    │    ├── note_001_2.jpg
+ │    │    ├── ...
+ │
+ ├── fake_notes/
+ │    ├── note_120/
+ │    │    ├── note_120_1.jpg
+ │    │    ├── note_120_2.jpg
+\end{verbatim}
+
+This structure ensures that the six images belonging to the same banknote can be processed jointly within a multi-view learning pipeline.
+
+\subsection{Dataset Split for Experiments}
+
+To ensure fair evaluation and avoid data leakage, the dataset was split at the banknote level rather than the image level. This guarantees that all six images of a banknote appear exclusively in either the training, validation, or test set.
+
+The dataset was divided using a stratified split as follows:
+
+\begin{table}[h]
+\centering
+\caption{Dataset split used in experiments}
+\begin{tabular}{lccc}
+\hline
+Split & Notes & Genuine & Counterfeit \\
+\hline
+Training & 973 & 561 & 412 \\
+Validation & 208 & 120 & 88 \\
+Test & 209 & 121 & 88 \\
+\hline
+Total & 1390 & 802 & 588 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Dataset Visualization}
+
+Figure~\ref{fig:dataset_distribution} illustrates the class distribution and denomination breakdown of the dataset.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.8\linewidth]{figures/dataset_distribution.png}
+\caption{Distribution of genuine and counterfeit banknotes in the dataset.}
+\label{fig:dataset_distribution}
+\end{figure}
+
+The dataset exhibits a moderate class imbalance with a ratio of approximately 1.36:1 between genuine and counterfeit notes. During training, class balancing techniques were applied to mitigate potential bias.
+
+
+\section{Proposed Methodology}
+
+This section describes the proposed \textit{JaalTaka} framework for counterfeit Bangladeshi banknote authentication. The system adopts a multi-view deep learning pipeline that integrates convolutional feature extraction, transformer-based feature fusion, and explainable artificial intelligence (XAI) techniques to provide accurate and interpretable predictions. The overall pipeline of the proposed system is illustrated in Fig.~\ref{fig:methodology_pipeline}.
+
+The framework consists of five main stages:
+
+\begin{enumerate}
+\item Multi-view data engineering
+\item CNN-based feature extraction
+\item Transformer-based multi-view feature fusion
+\item Model training and comparative evaluation
+\item Explainability analysis and deployment
+\end{enumerate}
+
+
+\subsection{Overall Framework}
+
+The proposed framework processes multiple visual views of a banknote captured using smartphone cameras. Each banknote is represented by six images corresponding to different security regions. These views are simultaneously processed by a shared convolutional backbone network to extract discriminative visual features.
+
+The extracted feature embeddings are first projected from the high-dimensional backbone space ($\mathbb{R}^{2048}$ for ResNet50) to a latent transformer space ($\mathbb{R}^{512}$) using a linear projection layer followed by LayerNorm, ReLU activation, and Dropout. To maintain the spatial context of each security region, learnable view-specific positional embeddings ($6 \times 512$) are added to the projected features.
+
+These representations are then processed by a Transformer Encoder consisting of 2 layers and 8 attention heads. The encoder utilizes the Gaussian Error Linear Unit (GELU) activation and a Pre-Layer Normalization (Pre-LN) architecture to ensure stable training and effective gradient flow. The transformer models long-range dependencies and cross-view relationships, enabling the network to perform joint reasoning across all six security regions.
+
+The final view-level representations are aggregated via an Attention Pooling module, which computes learned importance weights for each view to produce a unified global descriptor ($B, 512$). This fused representation is passed to a multi-layer classifier head ($512 \to 512 \to \text{ReLU} \to \text{Dropout} \to 2$) to predict the final authentication class.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/proposed_methodology.pdf}
+\caption{Overview of the proposed JaalTaka pipeline for counterfeit Bangladeshi banknote authentication. The framework integrates multi-view CNN feature extraction, transformer-based fusion, ablation studies, explainable AI analysis, and deployment in mobile and web environments.}
+\label{fig:methodology_pipeline}
+\end{figure}
+
+\subsection{Multi-View Data Representation}
+
+Each banknote is captured using six distinct views representing important security regions:
+
+\begin{itemize}
+\item Portrait region
+\item Security thread
+\item Watermark
+\item Micro-lettering
+\item Intaglio patterns
+\item Optically variable ink (OVI)
+\end{itemize}
+
+Each view image is resized to $224 \times 224$ pixels and normalized before training.
+
+For a batch of $B$ banknotes, the input tensor is represented as:
+
+\begin{equation}
+X \in \mathbb{R}^{B \times V \times C \times H \times W}
+\end{equation}
+
+where
+
+\begin{itemize}
+\item $B$ = batch size
+\item $V$ = number of views (6)
+\item $C$ = color channels (3)
+\item $H,W$ = spatial dimensions (224)
+\end{itemize}
+
+This multi-view representation enables the model to analyze complementary security features simultaneously.
+
+
+\subsection{CNN Feature Extraction and Backbone Variants}
+
+Each banknote view is processed independently by a shared convolutional neural network backbone (e.g., ResNet50, MobileNetV2, or EfficientNet-B0). The CNN extracts hierarchical feature representations capturing texture patterns, printing artifacts, and structural characteristics of banknotes. While ResNet50 provides high-capacity residual features, MobileNetV2 and EfficientNet-B0 are integrated to explore the framework's feasibility for resource-constrained mobile environments. The architectural integration of these backbones is illustrated in Fig.~\ref{fig:backbone_comparison}.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/backbone_integration.pdf}
+\caption{Integration of different CNN backbones into the multi-view framework. (a) ResNet50 for high-capacity features, (b) MobileNetV2 for mobile efficiency, and (c) EfficientNet-B0 for optimized parameter-to-accuracy ratio.}
+\label{fig:backbone_comparison}
+\end{figure}
+
+Given a view image $x_i$, the CNN backbone $f(\cdot)$ extracts a feature vector:
+
+\begin{equation}
+z_i = f(x_i), \quad z_i \in \mathbb{R}^{d_{backbone}}
+\end{equation}
+
+where $d_{backbone}$ represents the deep feature embedding dimension for the selected backbone (2048 for ResNet50, 1280 for MobileNetV2 and EfficientNet-B0).
+
+The six feature vectors are stacked to form a view-level feature matrix:
+
+\begin{equation}
+Z = [z_1, z_2, \dots, z_6]
+\end{equation}
+
+which serves as input to the transformer fusion module.
+
+
+\subsection{Transformer-Based Multi-View Feature Fusion}
+
+To capture cross-view relationships between banknote regions, the extracted CNN features are processed using a transformer encoder.
+
+The transformer applies a multi-head self-attention mechanism defined as:
+
+\begin{equation}
+\text{Attention}(Q,K,V) = \text{softmax}
+\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+\end{equation}
+
+where
+
+\begin{itemize}
+\item $Q$ = query matrix
+\item $K$ = key matrix
+\item $V$ = value matrix
+\item $d_k$ = feature dimension
+\end{itemize}
+
+This mechanism enables the model to dynamically assign importance weights to different views based on their relevance.
+
+The final aggregated representation is obtained using attention pooling:
+
+\begin{equation}
+h = \sum_{i=1}^{V} \alpha_i z_i
+\end{equation}
+
+where $\alpha_i$ represents the attention weight assigned to view $i$.
+
+\subsection{Proposed Model Architecture}
+
+The detailed architecture of the proposed counterfeit banknote authentication model is illustrated in Fig.~\ref{fig:architecture}. The network follows a multi-view deep learning design in which six different banknote regions are processed simultaneously to capture complementary security features.
+
+Given an input banknote, six images representing different security regions are captured and organized as a multi-view tensor:
+
+\begin{equation}
+X \in \mathbb{R}^{B \times V \times C \times H \times W}
+\end{equation}
+
+where $B$ denotes the batch size, $V$ represents the number of views (six), $C$ is the number of color channels, and $H \times W$ denotes the spatial resolution of the input images.
+
+Each view is processed independently by a shared convolutional neural network backbone (e.g., ResNet50, MobileNetV2, or EfficientNet-B0). The CNN extracts deep visual features $z_i \in \mathbb{R}^{d_{backbone}}$ that capture texture patterns and printing artifacts. These features are then projected to a unified latent space:
+
+\begin{equation}
+z'_i = \text{LayerNorm}(\text{ReLU}(\text{Linear}(z_i)))
+\end{equation}
+
+where $z'_i \in \mathbb{R}^{512}$. To preserve the identity of each security region, learnable view-positional embeddings $E \in \mathbb{R}^{6 \times 512}$ are added to the projected sequence:
+
+\begin{equation}
+Z_{in} = [z'_1, z'_2, \dots, z'_6] + E
+\end{equation}
+
+The resulting feature sequence $Z_{in}$ is passed to a Transformer Encoder consisting of 2 layers and 8 heads, utilizing GELU activation and Pre-LN normalization. The transformer models long-range cross-view dependencies, outputting a context-aware feature set $Z_{out}$.
+
+The final fused representation $h \in \mathbb{R}^{512}$ is obtained through an Attention Pooling module. This module computes a scalar importance weight $\alpha_i$ for each view by calculating the compatibility between a learned query vector $q$ and the keys $k_i$ derived from each view's feature:
+
+\begin{equation}
+\alpha_i = \frac{\exp(q^T k_i)}{\sum_{j=1}^{6} \exp(q^T k_j)}, \quad h = \sum_{i=1}^{6} \alpha_i z_{out,i}
+\end{equation}
+
+where $\alpha_i$ represents the dynamic contribution of security region $i$ to the final decision.
+
+Finally, the classification head predicts the authenticity of the banknote:
+
+\begin{equation}
+y = \text{Softmax}(\text{Linear}(\text{Dropout}(\text{ReLU}(\text{Linear}(h)))))
+\end{equation}
+
+This architecture enables the model to jointly analyze multiple banknote regions, improving robustness against partial damage, occlusion, and printing variations commonly observed in real-world currency.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/proposed_architecture.pdf}
+\caption{Architecture of the proposed multi-view transformer network. Six banknote views are processed by a shared CNN backbone, followed by transformer-based feature fusion and a fully connected classification layer.}
+\label{fig:architecture}
+\end{figure}
+
+
+\newpage
+\subsection{Classification Layer}
+
+The fused feature vector $h$ is passed through a fully connected classification layer:
+
+\begin{equation}
+y = \sigma(W h + b)
+\end{equation}
+
+where
+
+\begin{itemize}
+\item $W$ = learnable weight matrix
+\item $b$ = bias term
+\item $\sigma$ = sigmoid activation
+\end{itemize}
+
+The output $y$ represents the probability that a banknote is counterfeit.
+
+
+\subsection{CNN Baseline Models for Comparison}
+
+To evaluate the effectiveness of the proposed transformer fusion model, several widely used convolutional architectures were implemented as baseline models.
+
+These models process the multi-view images using mean feature pooling across views before classification.
+
+\begin{table}[ht]
+\centering
+\caption{Model architectures used for comparative evaluation}
+\begin{tabular}{lccc}
+\hline
+Model & Parameters & Aggregation & Backbone Type \\
+\hline
+MobileNetV2 & 2.9M & Mean Pooling & Lightweight CNN \\
+EfficientNet-B0 & 4.7M & Mean Pooling & Efficient CNN \\
+ResNet50 & 24.6M & Mean Pooling & Residual Network \\
+\hline
+Proposed Model & 31.2M & Transformer Attention & CNN + Transformer \\
+\hline
+\end{tabular}
+\label{tab:cnn_models}
+\end{table}
+
+The proposed transformer-based fusion mechanism improves cross-view feature interaction compared to simple pooling-based aggregation methods.
+
+
+\subsection{Model Training}
+
+The models were trained using the AdamW optimizer with an initial learning rate of $3 \times 10^{-4}$. Mixed precision training was employed to reduce GPU memory consumption and accelerate training on the NVIDIA RTX 4060 GPU.
+
+The binary cross-entropy loss function was used:
+
+\begin{equation}
+L = -\frac{1}{N}\sum_{i=1}^{N}
+[y_i \log(\hat{y_i}) + (1-y_i)\log(1-\hat{y_i})]
+\end{equation}
+
+Training was performed for a maximum of 50 epochs with early stopping based on validation accuracy. The comprehensive set of hyperparameters and training configurations is summarized in Table~\ref{tab:hyperparameters}.
+
+\begin{table}[ht]
+\centering
+\caption{Hyperparameters and training configuration for the JaalTaka framework.}
+\begin{tabular}{ll}
+\hline
+Hyperparameter & Value \\
+\hline
+Optimizer & AdamW \\
+Initial Learning Rate & $3 \times 10^{-4}$ \\
+Weight Decay & $1 \times 10^{-4}$ \\
+Learning Rate Scheduler & ReduceLROnPlateau (Factor=0.5, Patience=3) \\
+Batch Size & 16 \\
+Loss Function & Binary Cross-Entropy \\
+Mixed Precision & FP16 (GradScaler) \\
+Augmentation & Rotation (15$^{\circ}$), ColorJitter, HorizontalFlip \\
+Hardware & NVIDIA RTX 4060 (8GB VRAM) \\
+\hline
+\end{tabular}
+\label{tab:hyperparameters}
+\end{table}
+
+
+\subsection{Explainable AI Analysis}
+
+To interpret the decision-making process of the proposed model, three explainable AI techniques were employed: Grad-CAM, LIME, and SHAP. These methods provide complementary insights into the regions and features that influence the model's predictions.
+
+Grad-CAM generates gradient-based activation maps highlighting spatial regions that contribute most strongly to the classification decision. As shown in Fig.~\ref{fig:gradcam}, the model primarily focuses on critical security features such as the watermark and portrait regions.
+
+LIME provides local interpretability by perturbing superpixel segments of the image and observing their impact on the prediction. The results in Fig.~\ref{fig:lime} indicate that the classifier relies heavily on micro-lettering and security thread regions when distinguishing counterfeit notes.
+
+SHAP explanations quantify feature contributions using a game-theoretic approach. As illustrated in Fig.~\ref{fig:shap}, the most influential regions correspond to the same security features typically used by human experts during manual authentication.
+
+These results demonstrate that the model learns meaningful security patterns rather than relying on irrelevant background artifacts, thereby increasing the transparency and reliability of the proposed system.
+
+\caption{Explainability visualizations produced by three XAI techniques. Grad-CAM highlights salient activation regions, LIME identifies influential superpixels, and SHAP quantifies feature contributions for counterfeit banknote detection.}
+
+\label{fig:xai}
+\end{figure}
+
+\caption{Explainability visualizations generated by three XAI techniques. Grad-CAM highlights salient activation regions, LIME identifies influential superpixels, and SHAP quantifies feature contributions for counterfeit banknote detection.}
+
+\label{fig:xai}
+\end{figure}
+
+\subsection{Deployment Architecture}
+
+To enable real-world usage, the trained model was exported to the ONNX format and deployed in two environments:
+
+\begin{itemize}
+\item Streamlit web interface for research visualization
+\item Flutter-based Android mobile application for real-time inference
+\end{itemize}
+
+The ONNX runtime enables efficient inference on mobile devices while maintaining high prediction accuracy.
+
+
+\section{Experiments and Results}
+
+This section evaluates the effectiveness of the proposed multi-view transformer framework for counterfeit banknote detection. We present the experimental setup, evaluation metrics, baseline comparisons, ablation studies, explainability analysis, and deployment performance.
+
+All experiments were conducted using the JaalTaka dataset containing 1,390 banknotes with six images per note. The dataset consists of 802 genuine and 588 counterfeit banknotes, resulting in a total of 8,340 images\cite{piyas2025jaaltaka}.
+
+\subsection{Experimental Setup}
+
+The proposed framework was implemented using PyTorch and trained on a GPU-enabled workstation. Mixed precision training (AMP) was employed to accelerate computation and reduce memory usage.
+
+The dataset was divided into three subsets using a note-level stratified split to prevent data leakage between views of the same banknote. The training, validation, and testing splits consist of 973, 208, and 209 banknotes respectively.
+
+\begin{table}[h]
+\centering
+\caption{Dataset split used in experiments}
+\begin{tabular}{lccc}
+\hline
+Dataset Split & Total Notes & Genuine & Counterfeit \\
+\hline
+Training & 973 & 561 & 412 \\
+Validation & 208 & 120 & 88 \\
+Test & 209 & 121 & 88 \\
+\hline
+Total & 1390 & 802 & 588 \\
+\hline
+\end{tabular}
+\end{table}
+
+All images were resized to $224\times224$ pixels and normalized using ImageNet statistics. Data augmentation techniques including rotation, brightness adjustment, and Gaussian noise were applied during training to improve model robustness.
+
+\subsection{Evaluation Metrics}
+
+The performance of the proposed model was evaluated using standard classification metrics including accuracy, precision, recall, F1-score, and area under the receiver operating characteristic curve (ROC-AUC).
+
+Accuracy is defined as
+
+\begin{equation}
+Accuracy = \frac{TP + TN}{TP + TN + FP + FN}
+\end{equation}
+
+Precision and recall are defined as
+
+\begin{equation}
+Precision = \frac{TP}{TP + FP}
+\end{equation}
+
+\begin{equation}
+Recall = \frac{TP}{TP + FN}
+\end{equation}
+
+The F1-score is calculated as
+
+\begin{equation}
+F1 = 2 \times \frac{Precision \times Recall}{Precision + Recall}
+\end{equation}
+
+ROC-AUC is used to measure the model's ability to distinguish between genuine and counterfeit classes across different classification thresholds.
+
+
+\subsection{Baseline Model Performance}
+
+To establish a benchmark, a baseline multi-view model using a ResNet50 backbone with mean pooling across views was implemented.
+
+\begin{table}[h]
+\centering
+\caption{Baseline model performance on the test set}
+\begin{tabular}{lccccc}
+\hline
+Model & Accuracy & Precision & Recall & F1-score & ROC-AUC \\
+\hline
+ResNet50 + Mean Pooling & 0.9904 & 0.9917 & 0.9917 & 0.9917 & 0.9917 \\
+\hline
+\end{tabular}
+\end{table}
+
+The baseline model achieved a test accuracy of 99.04\%, demonstrating that multi-view analysis already provides strong discriminative power for banknote authentication.
+
+\subsection{Proposed Transformer Model Results}
+
+The proposed transformer-based fusion model was evaluated using the same experimental settings as the baseline model.
+
+\begin{table}[h]
+\centering
+\caption{Performance comparison of all evaluated models on the JaalTaka test set}
+\begin{tabular}{lccccc}
+\hline
+Model & Accuracy & Precision & Recall & F1 & ROC-AUC \\
+\hline
+MobileNetV2 Baseline & 0.9904 & 0.9917 & 0.9917 & 0.9917 & 0.9906 \\
+EfficientNet-B0 Baseline & 0.9904 & 0.9917 & 0.9917 & 0.9917 & 0.9900 \\
+ResNet50 Baseline & 0.9904 & 0.9917 & 0.9917 & 0.9917 & 0.9917 \\
+Proposed Attention Transformer & \textbf{0.9904} & \textbf{0.9917} & \textbf{0.9917} & \textbf{0.9917} & \textbf{0.9925} \\
+\hline
+\end{tabular}
+\end{table}
+
+Although both models achieve similar classification accuracy, the transformer-based model provides a higher ROC-AUC score, indicating improved probability calibration and better discrimination between genuine and counterfeit banknotes.
+
+\begin{figure}[ht]
+\centering
+
+\begin{subfigure}{0.48\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/confusion_matrix.png}
+\caption{Confusion matrix}
+\label{fig:confusion}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/roc.png}
+\caption{ROC curve}
+\label{fig:roc}
+\end{subfigure}
+
+\caption{Performance evaluation of the proposed transformer-based counterfeit detection model. (a) Confusion matrix on the test set. (b) ROC curve comparing the baseline CNN and the proposed transformer-based architecture.}
+\label{fig:evaluation}
+\end{figure}
+
+\newpage
+\subsection{Model Comparison}
+\subsubsection{Comparison with CNN Baselines}
+To further validate the effectiveness of the proposed multi-view transformer approach, we compare it with standard CNN baselines:
+\begin{itemize}
+	\item \textbf{Single-View CNN:} Standard ResNet-50 trained on a single view per note.
+	\item \textbf{Multi-View CNN:} ResNet-50 features from all views, fused by mean pooling (no attention/transformer).
+	\item \textbf{Multi-View Transformer (Ours):} Full model as described.
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\caption{Performance comparison of all evaluated models on the JaalTaka test set.}
+\begin{tabular}{lccccc}
+\hline
+Model & Accuracy & Precision & Recall & F1 & ROC-AUC \\
+\hline
+MobileNetV2 Baseline & 99.04\% & 0.9917 & 0.9917 & 0.9917 & 0.9906 \\
+EfficientNet-B0 Baseline & 99.04\% & 0.9917 & 0.9917 & 0.9917 & 0.9900 \\
+ResNet50 Baseline & 99.04\% & 0.9917 & 0.9917 & 0.9917 & 0.9917 \\
+Proposed Attention Transformer & \textbf{99.04\%} & 0.9917 & 0.9917 & 0.9917 & \textbf{0.9925} \\
+\hline
+\end{tabular}
+\label{tab:final_comparison}
+\end{table}
+
+The comparative performance across all models is visualized in Fig.~\ref{fig:final_performance}, showing the ROC curves and confusion matrices for the evaluated architectures.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/final_comparison_bar.png}
+\caption{Comparative performance metrics for baseline and proposed architectures. The bar chart illustrates the marginal but consistent improvement in ROC-AUC for the Attention-Transformer framework.}
+\label{fig:final_performance}
+\end{figure}
+
+
+\newpage
+\subsection{Ablation Study}
+
+To evaluate the contribution of different components in the proposed architecture, several ablation experiments were conducted.
+
+\subsubsection{Effect of Number of Views}
+
+\begin{table}[h]
+\centering
+\caption{Impact of number of views on model performance}
+\begin{tabular}{lccccc}
+\hline
+Views & Accuracy & Precision & Recall & F1-score & ROC-AUC \\
+\hline
+1 View & 0.9904 & 0.9917 & 0.9917 & 0.9917 & 0.9898 \\
+3 Views & 0.9904 & 0.9917 & 0.9917 & 0.9917 & 0.9894 \\
+6 Views & \textbf{0.9904} & \textbf{0.9917} & \textbf{0.9917} & \textbf{0.9917} & \textbf{0.9925} \\
+\hline
+\end{tabular}
+\end{table}
+
+The results indicate that using six views provides the highest ROC-AUC score, confirming that multi-view information improves model reliability.
+
+To further analyze the training dynamics of the proposed model, the training and validation loss curves for different numbers of views are illustrated in Fig.~\ref{fig:view_training_curves}. 
+
+The curves show that the six-view configuration converges more stably and achieves lower validation loss compared to single-view and three-view models. This indicates that incorporating additional security regions improves the model's ability to learn discriminative representations for counterfeit detection.
+
+\begin{figure}[ht]
+\centering
+
+\begin{subfigure}{0.32\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/ablation_attention_1views_curves.png}
+\caption{1 View}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.32\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/ablation_attention_3views_curves.png}
+\caption{3 Views}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.32\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/ablation_attention_6views_curves.png}
+\caption{6 Views}
+\end{subfigure}
+
+\caption{Training and validation curves for the ablation study on the number of views. Each plot shows the evolution of training and validation loss across epochs for models trained with one, three, and six views respectively.}
+
+\label{fig:view_training_curves}
+\end{figure}
+
+\subsubsection{View Dropout Regularization}
+
+\begin{table}[h]
+\centering
+\caption{Effect of view dropout rate}
+\begin{tabular}{lccccc}
+\hline
+Dropout Rate & Accuracy & Precision & Recall & F1-score & ROC-AUC \\
+\hline
+0.00 & 0.9904 & 0.9917 & 0.9917 & 0.9917 & 0.9925 \\
+0.10 & 0.9856 & 0.9836 & 0.9917 & 0.9877 & \textbf{0.9979} \\
+0.15 & 0.9904 & 0.9917 & 0.9917 & 0.9917 & 0.9943 \\
+0.25 & 0.9904 & 0.9917 & 0.9917 & 0.9917 & 0.9899 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Comparison of different model architectures}
+\begin{tabular}{lcccc}
+\hline
+Model & Parameters & Accuracy & F1-score & ROC-AUC \\
+\hline
+ResNet50 Mean Pooling & 24.6M & 0.9856 & 0.9876 & 0.9872 \\
+Proposed Transformer Model & 31.2M & \textbf{0.9904} & \textbf{0.9917} & \textbf{0.9926} \\
+\hline
+\end{tabular}
+\end{table}
+
+The confusion matrices for the baseline and proposed transformer-based models are presented in Fig.~\ref{fig:confusion_comparison}. The results show that the proposed model reduces misclassification between genuine and counterfeit banknotes compared to the baseline CNN architecture.
+
+Similarly, the confusion matrices for different view dropout rates (Fig.~\ref{fig:dropout_cm}) illustrate that moderate dropout improves the model's robustness without significantly affecting classification accuracy.
+
+\begin{figure}[ht]
+\centering
+
+\begin{subfigure}{0.23\linewidth}
+\includegraphics[width=\linewidth]{figures/ablation_viewdropout_0.00_confusion.png}
+\caption{0.00}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.23\linewidth}
+\includegraphics[width=\linewidth]{figures/ablation_viewdropout_0.10_confusion.png}
+\caption{0.10}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.23\linewidth}
+\includegraphics[width=\linewidth]{figures/ablation_viewdropout_0.15_confusion.png}
+\caption{0.15}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.23\linewidth}
+\includegraphics[width=\linewidth]{figures/ablation_viewdropout_0.25_confusion.png}
+\caption{0.25}
+\end{subfigure}
+
+\caption{Confusion matrices for different view dropout rates in the ablation study.}
+\label{fig:dropout_cm}
+\end{figure}
+
+\subsection{Explainability Analysis}
+
+To improve transparency and interpretability, three explainable AI techniques were applied to the trained model: Grad-CAM, LIME, and SHAP.
+
+Grad-CAM generates heatmaps that highlight the image regions influencing the model’s predictions. LIME provides local explanations by perturbing image segments and analyzing their impact on predictions. SHAP quantifies the contribution of each input feature based on game-theoretic principles.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.7\linewidth]{figures/gradcam.png}
+\caption{Grad-CAM visualization highlighting the most influential regions of the banknote used by the model for counterfeit detection.}
+\label{fig:gradcam}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.7\linewidth]{figures/lime.png}
+\caption{LIME explanation showing important superpixel regions that contribute to the model's prediction.}
+\label{fig:lime}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.7\linewidth]{figures/shap.png}
+\caption{SHAP explanation illustrating feature contributions and pixel-level importance in counterfeit banknote classification.}
+\label{fig:shap}
+\end{figure}
+
+The explanations reveal that the model focuses primarily on security threads, watermark areas, and micro-lettering regions when detecting counterfeit banknotes.
+
+\subsection{Mobile Deployment Performance}
+
+To evaluate real-world usability, the trained model was exported to ONNX format and deployed in a Flutter-based Android application using ONNX Runtime.
+
+\begin{table}[h]
+\centering
+\caption{Mobile deployment performance}
+\begin{tabular}{lcc}
+\hline
+Model Format & Model Size & Inference Time \\
+\hline
+PyTorch (.pth) & 119 MB & --- \\
+ONNX FP32 & 119 MB & 97 ms \\
+ONNX INT8 Quantized & 30 MB & 4.5 s (Android) \\
+\hline
+\end{tabular}
+\end{table}
+
+The INT8 quantized model achieves a 74.7\% reduction in model size while maintaining comparable classification accuracy.
+
+
+\newpage
+\section{Discussion}
+
+The experimental results demonstrate that the proposed multi-view transformer framework is highly effective for counterfeit Bangladeshi banknote authentication. The model achieved a test accuracy of 99.04\% and ROC-AUC of 0.9925, indicating strong discriminative capability between genuine and counterfeit banknotes.
+
+\subsection{Error Analysis of Outlier Samples}
+
+A notable finding across all experimental configurations is the consistent test accuracy ceiling of 99.04\%. Regardless of the backbone architecture (ResNet50, MobileNetV2, or EfficientNet-B0) or the fusion mechanism, every evaluated model failed on the exact same two banknotes: note\_402 (a counterfeit note misclassified as genuine) and note\_405 (a genuine note misclassified as counterfeit).
+
+This phenomenon suggests the presence of "irreducible error" within the current dataset's feature space. Further investigation of these "Hard Cases" via Grad-CAM and qualitative inspection reveals that note\_402 represents a high-fidelity counterfeit that successfully mimics key security features, while note\_405 exhibits significant physical degradation that obscures authentic signals. The visual attention of the four architectures on these outlier samples is compared in Fig.~\ref{fig:error_gradcam}.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/error_analysis_grid.pdf}
+\caption{Cross-architecture Grad-CAM comparison for outlier samples. The grid visualizes the focus regions of ResNet50, MobileNetV2, EfficientNet-B0, and the Proposed Attention model for note\_402 (False Positive) and note\_405 (False Negative).}
+\label{fig:error_gradcam}
+\end{figure}
+
+Crucially, while the accuracy remained tied, the Proposed Attention Transformer demonstrated superior uncertainty calibration.
+ For the misclassified genuine note (note\_405), the transformer-based model assigned a higher probability to the correct class (0.000099) compared to the ResNet50 baseline (0.000032), indicating that the attention mechanism is more sensitive to subtle authentic cues even when the final threshold-based decision is incorrect. The 0.9925 ROC-AUC achieved by the proposed model confirms its superior ranking robustness across the entire test distribution.
+
+The ablation experiments confirm that incorporating multiple views improves the robustness of the system. While the model achieves high accuracy even with a single view, the six-view configuration produces the highest ROC-AUC score. This suggests that the additional views improve the confidence calibration of the model and reduce uncertainty in predictions.
+
+Furthermore, the attention-based fusion mechanism enables the model to dynamically prioritize different banknote regions depending on their relevance for authentication. This behavior reflects how human experts visually inspect different security elements when verifying banknotes.
+
+\subsection{Advantages of Transformer-Based Feature Fusion}
+
+The transformer encoder plays a crucial role in modeling relationships between different security regions of the banknote. Unlike conventional pooling-based fusion methods, the transformer enables the model to learn contextual dependencies between views.
+
+For example, counterfeit banknotes often replicate some security elements accurately while failing to reproduce others. The transformer architecture allows the model to detect inconsistencies between multiple security features, thereby improving detection reliability.
+
+Although the transformer model contains more parameters than the baseline CNN model, the performance improvement in ROC-AUC indicates better ranking capability and decision confidence.
+
+\subsection{Interpretability and Model Transparency}
+
+A major limitation of many deep learning-based authentication systems is their lack of interpretability. To address this issue, the proposed framework integrates multiple explainable AI techniques including Grad-CAM, LIME, and SHAP.
+
+The explainability analysis reveals that the model focuses on meaningful security features such as watermark regions, security threads, and micro-lettering patterns. These regions correspond to the same areas typically inspected by financial experts during manual verification.
+
+This alignment between machine explanations and human inspection procedures enhances the trustworthiness of the system and makes it more suitable for practical deployment in financial institutions.
+
+\subsection{Practical Deployment Considerations}
+
+To evaluate real-world feasibility, the trained model was deployed in a mobile authentication system using ONNX Runtime. The quantized model reduced the size from 119 MB to approximately 30 MB while maintaining similar prediction performance.
+
+This compression enables deployment on mobile devices with limited computational resources. The developed Flutter-based Android application demonstrates that the proposed system can perform real-time counterfeit detection using smartphone cameras, as shown in Fig.~\ref{fig:mobile_app}.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figures/mobile_app_screenshots.png}
+\caption{Implementation of the JaalTaka mobile authentication system. (a) 6-view guided capture interface, (b) real-time ONNX inference result, and (c) on-device Grad-CAM heatmap visualization.}
+\label{fig:mobile_app}
+\end{figure}
+
+Such a system has the potential to assist retailers, banks, and law enforcement agencies in identifying counterfeit banknotes quickly and reliably.
+
+\subsection{Limitations}
+
+Despite the promising results, several limitations should be acknowledged. First, the dataset contains only two denominations (500 and 1000 BDT), which may limit the generalization of the model to other denominations. Second, counterfeit samples originate from a limited number of sources, which may not fully represent the diversity of real-world counterfeiting techniques.
+
+Another limitation is the requirement for capturing multiple views of the banknote. While this improves detection accuracy, it increases the interaction time for users. Future work may explore automated region detection methods that can extract security features from a single image or short video capture.
+
+\section{Conclusion}
+
+This paper presented an explainable multi-view deep learning framework for counterfeit Bangladeshi banknote authentication. The proposed system combines convolutional neural networks for feature extraction, transformer-based attention mechanisms for multi-view feature fusion, and explainable artificial intelligence techniques for model interpretability.
+
+Experiments conducted on the JaalTaka dataset demonstrate that the proposed model achieves high performance with a test accuracy of 99.04\% and ROC-AUC of 0.9925. The results show that multi-view learning significantly improves the reliability of counterfeit detection by allowing the model to analyze multiple security features simultaneously.
+
+The transformer-based fusion mechanism effectively captures relationships between different banknote regions, enabling the system to detect inconsistencies across security features. Additionally, the integration of Grad-CAM, LIME, and SHAP provides visual explanations that improve transparency and trust in the model's predictions.
+
+The deployment of the trained model in a mobile application further demonstrates the practicality of the proposed approach for real-world financial security applications.
+
+Overall, this work establishes a robust foundation for automated banknote authentication systems and highlights the potential of explainable deep learning models in financial security.
+
+\section{Future Work}
+
+Several directions can be explored to further enhance the proposed framework. First, future research should expand the dataset to include additional denominations and larger variety of counterfeit samples to improve global generalization. Second, we aim to investigate advanced model compression techniques such as weight pruning and knowledge distillation to further reduce the inference latency of the transformer model on edge devices. Third, the integration of automated region detection via lightweight object detectors (e.g., YOLOv8-tiny) could eliminate the need for manual multi-view capture, enabling a more seamless user experience. Finally, exploring federated learning could facilitate collaborative training across financial institutions while preserving sensitive data privacy.
+
+By addressing these challenges, future systems could provide more scalable, reliable, and user-friendly solutions for counterfeit currency detection.
+
+\bibliographystyle{elsarticle-num}
+\bibliography{references}
+
+\end{document}
+

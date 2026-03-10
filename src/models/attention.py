@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from src.config import (
     NUM_VIEWS, NUM_CLASSES, FEATURE_DIM, DROPOUT_RATE,
     CLASSIFIER_HIDDEN, TRANSFORMER_HEADS, TRANSFORMER_LAYERS,
-    TRANSFORMER_DIM, TRANSFORMER_DROPOUT, VIEW_EMBED_DIM,
+    TRANSFORMER_DIM, TRANSFORMER_DROPOUT, VIEW_EMBED_DIM, BACKBONE,
 )
 
 
@@ -76,7 +76,7 @@ class AttentionPooling(nn.Module):
 class MultiViewAttentionNet(nn.Module):
     """
     Advanced multi-view model with:
-      - ResNet50 feature extractor (shared across views)
+      - Configurable feature extractor (shared across views)
       - Linear feature projection
       - Learnable view positional embeddings
       - Transformer encoder for cross-view reasoning
@@ -86,6 +86,7 @@ class MultiViewAttentionNet(nn.Module):
 
     def __init__(
         self,
+        backbone_name: str = BACKBONE,
         num_views: int = NUM_VIEWS,
         num_classes: int = NUM_CLASSES,
         pretrained: bool = True,
@@ -98,12 +99,32 @@ class MultiViewAttentionNet(nn.Module):
         super().__init__()
         self.num_views = num_views
         self.d_model = d_model
+        self.backbone_name = backbone_name.lower()
 
         # ---- Backbone ----
-        weights = models.ResNet50_Weights.DEFAULT if pretrained else None
-        backbone = models.resnet50(weights=weights)
-        self.backbone = nn.Sequential(*list(backbone.children())[:-1])
-        self.backbone_dim = FEATURE_DIM  # 2048
+        if self.backbone_name == "resnet50":
+            weights = models.ResNet50_Weights.DEFAULT if pretrained else None
+            backbone = models.resnet50(weights=weights)
+            self.backbone = nn.Sequential(*list(backbone.children())[:-1])
+            self.backbone_dim = 2048
+        elif self.backbone_name == "mobilenet_v2":
+            weights = models.MobileNet_V2_Weights.DEFAULT if pretrained else None
+            backbone = models.mobilenet_v2(weights=weights)
+            self.backbone = nn.Sequential(
+                backbone.features,
+                nn.AdaptiveAvgPool2d((1, 1))
+            )
+            self.backbone_dim = 1280
+        elif self.backbone_name == "efficientnet_b0":
+            weights = models.EfficientNet_B0_Weights.DEFAULT if pretrained else None
+            backbone = models.efficientnet_b0(weights=weights)
+            self.backbone = nn.Sequential(
+                backbone.features,
+                nn.AdaptiveAvgPool2d((1, 1))
+            )
+            self.backbone_dim = 1280
+        else:
+            raise ValueError(f"Unsupported backbone: {backbone_name}")
 
         if freeze_backbone:
             for param in self.backbone.parameters():
