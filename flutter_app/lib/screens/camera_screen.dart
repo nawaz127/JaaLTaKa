@@ -235,6 +235,8 @@ class _CameraScreenState extends State<CameraScreen> {
                 provider.toggleLanguage();
               } else if (value == 'voice') {
                 provider.toggleVoice();
+              } else if (value == 'model') {
+                provider.toggleModelMode();
               }
             },
             itemBuilder: (BuildContext context) {
@@ -246,6 +248,16 @@ class _CameraScreenState extends State<CameraScreen> {
                       : Icons.brightness_auto;
               
               return [
+                PopupMenuItem(
+                  value: 'model',
+                  child: Row(
+                    children: [
+                      Icon(provider.useFastModel ? Icons.bolt : Icons.precision_manufacturing, size: 20, color: Colors.amber),
+                      const SizedBox(width: 8),
+                      Text(provider.useFastModel ? 'Mode: Fast (INT8)' : 'Mode: Accurate (FP32)'),
+                    ],
+                  ),
+                ),
                 PopupMenuItem(
                   value: 'theme',
                   child: Row(

@@ -25,6 +25,7 @@ class AuthenticationProvider extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
   bool _isBangla = false;
   bool _isVoiceEnabled = true;
+  bool _useFastModel = true; // Default to INT8 for mobile
 
   // Multi-view capture state
   final List<String> _capturedViews = [];
@@ -68,6 +69,7 @@ class AuthenticationProvider extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   bool get isBangla => _isBangla;
   bool get isVoiceEnabled => _isVoiceEnabled;
+  bool get useFastModel => _useFastModel;
   List<String> get capturedViews => List.unmodifiable(_capturedViews);
   int get currentViewIndex => _currentViewIndex;
   bool get allViewsCaptured => _capturedViews.length >= OnnxService.numViews;
@@ -90,6 +92,7 @@ class AuthenticationProvider extends ChangeNotifier {
     _themeMode = ThemeMode.values[themeIdx];
     _isBangla = prefs.getBool('isBangla') ?? false;
     _isVoiceEnabled = prefs.getBool('isVoiceEnabled') ?? true;
+    _useFastModel = prefs.getBool('useFastModel') ?? true;
     
     await _initTts();
     await _loadHistory();
@@ -130,6 +133,18 @@ class AuthenticationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleModelMode() async {
+    _useFastModel = !_useFastModel;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('useFastModel', _useFastModel);
+    
+    // Reload model if already loaded
+    if (_isModelLoaded) {
+      await loadModel();
+    }
+    notifyListeners();
+  }
+
   /// Toggle theme: system → light → dark → system
   void toggleTheme() async {
     switch (_themeMode) {
@@ -154,10 +169,13 @@ class AuthenticationProvider extends ChangeNotifier {
       notifyListeners();
       _onnxService.init();
       
-      await _onnxService.loadModel(onProgress: (progress) {
-        _modelLoadProgress = progress;
-        notifyListeners();
-      });
+      await _onnxService.loadModel(
+        useFast: _useFastModel,
+        onProgress: (progress) {
+          _modelLoadProgress = progress;
+          notifyListeners();
+        }
+      );
       
       _modelLoadProgress = 1.0;
       _isModelLoaded = true;

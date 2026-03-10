@@ -18,21 +18,29 @@ class OnnxService {
   static const int inputSize = 224;
   static const int numViews = 6;
   static const int numChannels = 3;
-  static const String modelAssetPath = 'assets/models/jaaltaka_attention.onnx';
+  static const String modelAssetStandard = 'assets/models/jaaltaka_attention.onnx';
+  static const String modelAssetFast = 'assets/models/jaaltaka_attention_int8.onnx';
 
+  // ImageNet normalization constants
   static const List<double> mean = [0.485, 0.456, 0.406];
   static const List<double> std = [0.229, 0.224, 0.225];
 
+  // View labels for the guided capture
   static const List<String> viewNames = [
     'View 1 - Front', 'View 2 - Back', 'View 3 - Watermark',
     'View 4 - Security Thread', 'View 5 - Serial Number', 'View 6 - Hologram / UV',
   ];
 
+  // SHAP-based importance for each view
   static const List<double> viewImportance = [
     0.2990, 0.1211, 0.2655, 0.2461, 0.2104, 0.2996,
   ];
 
+  // Occlusion heatmap grid size
   static const int occlusionGridSize = 7;
+
+  bool _useFastModel = true;
+  bool get useFastModel => _useFastModel;
 
   OrtSession? _session;
   bool _isLoaded = false;
@@ -42,13 +50,21 @@ class OnnxService {
     OrtEnv.instance.init();
   }
 
-  Future<void> loadModel({void Function(double)? onProgress}) async {
-    if (_isLoaded) return;
+  Future<void> loadModel({bool useFast = true, void Function(double)? onProgress}) async {
+    if (_isLoaded && _useFastModel == useFast) return;
+
+    if (_isLoaded) {
+      _session?.release(); // release() is void, don't await
+      _isLoaded = false;
+    }
+
+    _useFastModel = useFast;
+    final assetPath = useFast ? modelAssetFast : modelAssetStandard;
+    final fileName = useFast ? 'jaaltaka_attention_int8.onnx' : 'jaaltaka_attention.onnx';
+
     try {
-      final modelPath = await _copyAssetToLocal(onProgress);
+      final modelPath = await _copyAssetToLocal(assetPath, fileName, onProgress);
       final sessionOptions = OrtSessionOptions();
-      
-      // Standard CPU optimizations that work on all versions
       sessionOptions.setIntraOpNumThreads(2); 
       sessionOptions.setInterOpNumThreads(2);
 
@@ -61,13 +77,13 @@ class OnnxService {
     }
   }
 
-  Future<String> _copyAssetToLocal(void Function(double)? onProgress) async {
+  Future<String> _copyAssetToLocal(String assetPath, String fileName, void Function(double)? onProgress) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final modelFile = File('${appDir.path}/jaaltaka_attention.onnx');
+    final modelFile = File('${appDir.path}/$fileName');
     if (await modelFile.exists()) return modelFile.path;
 
     onProgress?.call(0.1);
-    final ByteData data = await rootBundle.load(modelAssetPath);
+    final ByteData data = await rootBundle.load(assetPath);
     final List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
     await modelFile.writeAsBytes(bytes);
     onProgress?.call(1.0);
@@ -76,29 +92,21 @@ class OnnxService {
 
   Future<AuthenticationResult> runInference(List<String> viewPaths) async {
     if (!_isLoaded || _session == null) throw Exception('Model not loaded.');
-
     final totalStopwatch = Stopwatch()..start();
 
-    // 1. Decode images on Main Thread
     final List<Uint8List> rgbaList = [];
-    for (var path in viewPaths) {
-      rgbaList.add(await _decodeNative(path));
-    }
+    for (var path in viewPaths) rgbaList.add(await _decodeNative(path));
 
-    // 2. Heavy Normalization in Isolate
     final inputTensor = await compute(_normalizeInIsolate, rgbaList);
 
-    // 3. Parallel Execution (Model + OCR)
     final mlFuture = _runModelInInference(inputTensor);
     final ocrFuture = _extractSerialNumber(viewPaths[4]);
-
     final results = await Future.wait([mlFuture, ocrFuture]);
     
     final List<double> probs = results[0] as List<double>;
     final String serialNumber = results[1] as String;
 
     totalStopwatch.stop();
-
     return AuthenticationResult(
       isAuthentic: probs[1] > probs[0],
       confidence: probs[1] > probs[0] ? probs[1] : probs[0],
