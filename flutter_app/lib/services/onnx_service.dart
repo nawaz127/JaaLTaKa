@@ -11,9 +11,9 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 
 import '../models/auth_result.dart';
 
-/// JaalTaka ONNX Service - Ultra-Optimized Native Version.
-/// Fixed: EXIF rotation bug using fast native decoders + Isolate math.
-/// Performance: < 1000ms total latency.
+/// JaalTaka ONNX Service - Parallelized Production Version.
+/// Optimized for Latency: Parallel Image Pipeline + Vectorized Normalization.
+/// Developed by Shah Nawaz.
 class OnnxService {
   static const int inputSize = 224;
   static const int numViews = 6;
@@ -82,16 +82,18 @@ class OnnxService {
 
   Future<AuthenticationResult> runInference(List<String> viewPaths) async {
     if (!_isLoaded || _session == null) throw Exception('Model not loaded.');
-    final totalStopwatch = Stopwatch()..start();
+    final stopwatch = Stopwatch()..start();
 
-    // 1. NATIVE DECODING (Blazing Fast)
-    final List<Uint8List> rgbaList = [];
-    for (var path in viewPaths) {
-      rgbaList.add(await _decodeNativeFixed(path));
-    }
+    // 1. PARALLEL DECODING (Huge speed gain)
+    // We decode all 6 images at the same time using native cores.
+    final rgbaList = await Future.wait(
+      viewPaths.map((path) => _decodeNativeFixed(path))
+    );
+    final loadTime = stopwatch.elapsedMilliseconds;
 
-    // 2. ISOLATE NORMALIZATION
+    // 2. OPTIMIZED ISOLATE MATH
     final inputTensor = await compute(_normalizeInIsolate, rgbaList);
+    final normTime = stopwatch.elapsedMilliseconds - loadTime;
 
     // 3. PARALLEL ML + OCR
     final mlFuture = _runModelInInference(inputTensor);
@@ -100,13 +102,16 @@ class OnnxService {
     
     final List<double> probs = results[0] as List<double>;
     final String serialNumber = results[1] as String;
+    final inferTime = stopwatch.elapsedMilliseconds - loadTime - normTime;
 
-    totalStopwatch.stop();
+    stopwatch.stop();
+    debugPrint('SPEED PROFILE: Load=${loadTime}ms, Norm=${normTime}ms, Infer=${inferTime}ms');
+
     return AuthenticationResult(
       isAuthentic: probs[1] > probs[0],
       confidence: probs[1] > probs[0] ? probs[1] : probs[0],
       classProbabilities: {'Fake': probs[0], 'Real': probs[1]},
-      inferenceTimeMs: totalStopwatch.elapsedMilliseconds.toDouble(),
+      inferenceTimeMs: stopwatch.elapsedMilliseconds.toDouble(),
       viewResults: List.generate(numViews, (i) => ViewResult(
         name: viewNames[i], importance: viewImportance[i], imagePath: viewPaths[i],
       )),
@@ -114,26 +119,15 @@ class OnnxService {
     );
   }
 
-  /// NATIVE FAST DECODER + AUTOMATIC ROTATION FIX
   Future<Uint8List> _decodeNativeFixed(String path) async {
     final bytes = await File(path).readAsBytes();
-    
-    // ui.instantiateCodec handles internal rotation on most modern Android versions
-    // when providing a target size. This is 100x faster than pure Dart.
     final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
     final descriptor = await ui.ImageDescriptor.encoded(buffer);
-    
-    // Use native engine to decode and resize at once
-    final codec = await descriptor.instantiateCodec(
-      targetWidth: inputSize, 
-      targetHeight: inputSize
-    );
+    final codec = await descriptor.instantiateCodec(targetWidth: inputSize, targetHeight: inputSize);
     final frame = await codec.getNextFrame();
     final image = frame.image;
-    
     final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     final result = byteData!.buffer.asUint8List();
-    
     image.dispose();
     descriptor.dispose();
     buffer.dispose();
@@ -142,16 +136,21 @@ class OnnxService {
 
   static Float32List _normalizeInIsolate(List<Uint8List> rgbaList) {
     final tensor = Float32List(numViews * numChannels * inputSize * inputSize);
+    const inv255 = 1.0 / 255.0;
+    const channelSize = inputSize * inputSize;
+
     for (int v = 0; v < rgbaList.length; v++) {
       final rgba = rgbaList[v];
-      final base = v * numChannels * inputSize * inputSize;
-      for (int i = 0; i < inputSize * inputSize; i++) {
-        final r = rgba[i * 4] / 255.0;
-        final g = rgba[i * 4 + 1] / 255.0;
-        final b = rgba[i * 4 + 2] / 255.0;
-        tensor[base + 0 * inputSize * inputSize + i] = (r - mean[0]) / std[0];
-        tensor[base + 1 * inputSize * inputSize + i] = (g - mean[1]) / std[1];
-        tensor[base + 2 * inputSize * inputSize + i] = (b - mean[2]) / std[2];
+      final base = v * numChannels * channelSize;
+      
+      for (int i = 0; i < channelSize; i++) {
+        final r = rgba[i * 4] * inv255;
+        final g = rgba[i * 4 + 1] * inv255;
+        final b = rgba[i * 4 + 2] * inv255;
+
+        tensor[base + 0 * channelSize + i] = (r - mean[0]) / std[0];
+        tensor[base + 1 * channelSize + i] = (g - mean[1]) / std[1];
+        tensor[base + 2 * channelSize + i] = (b - mean[2]) / std[2];
       }
     }
     return tensor;
@@ -160,11 +159,9 @@ class OnnxService {
   Future<List<double>> _runModelInInference(Float32List inputTensor) async {
     final shape = [1, numViews, numChannels, inputSize, inputSize];
     final inputOrt = OrtValueTensor.createTensorWithDataList(inputTensor, shape);
-    final runOptions = OrtRunOptions();
-    final outputs = _session!.run(runOptions, {'views': inputOrt});
+    final outputs = _session!.run(OrtRunOptions(), {'views': inputOrt});
     final logits = _parseLogits(outputs[0]?.value);
     inputOrt.release();
-    runOptions.release();
     for (var o in outputs) o?.release();
     return _softmax(logits);
   }
@@ -191,18 +188,22 @@ class OnnxService {
     void Function(int current, int total)? onProgress,
   }) async {
     if (!_isLoaded || _session == null) throw Exception('Model not loaded.');
-    final List<Uint8List> rgbaList = [];
-    for (var path in viewPaths) rgbaList.add(await _decodeNativeFixed(path));
+    
+    // Parallel decode for occlusion too
+    final rgbaList = await Future.wait(viewPaths.map((path) => _decodeNativeFixed(path)));
     final Float32List baselineTensor = await compute(_normalizeInIsolate, rgbaList);
+    
     final baselineProbs = await _runModelInInference(baselineTensor);
     final predIdx = baselineProbs[1] > baselineProbs[0] ? 1 : 0;
     final baselineConf = baselineProbs[predIdx];
     final cellSize = inputSize ~/ occlusionGridSize;
     final totalOps = numViews * occlusionGridSize * occlusionGridSize;
     int completedOps = 0;
+
     final workingTensor = Float32List.fromList(baselineTensor);
     final backup = Float32List(numChannels * cellSize * cellSize);
     final heatmaps = <List<List<double>>>[];
+
     for (int v = 0; v < numViews; v++) {
       final grid = List.generate(occlusionGridSize, (_) => List.filled(occlusionGridSize, 0.0));
       final viewBase = v * numChannels * inputSize * inputSize;
