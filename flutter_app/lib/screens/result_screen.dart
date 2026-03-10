@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import '../models/auth_result.dart';
+import '../providers/auth_provider.dart';
 import '../services/pdf_service.dart';
 import 'explanation_screen.dart';
 
@@ -299,6 +301,7 @@ class _ResultScreenState extends State<ResultScreen>
               // New scan button
               FilledButton.icon(
                 onPressed: () {
+                  context.read<AuthenticationProvider>().reset();
                   Navigator.of(context).popUntil((route) => route.isFirst);
                 },
                 icon: const Icon(Icons.camera_alt),
