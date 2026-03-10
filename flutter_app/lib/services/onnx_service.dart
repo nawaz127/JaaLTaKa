@@ -5,14 +5,15 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img; 
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../models/auth_result.dart';
 
-/// ONNX Runtime inference service for banknote authentication.
-/// Optimized for Latency via Parallel Pipeline and CPU Thread Tuning.
+/// JaalTaka ONNX Service - Final Optimized Version.
+/// Features: Parallel ML/OCR, EXIF Correction, and Isolate-based High Speed.
 /// Developed by Shah Nawaz.
 class OnnxService {
   static const int inputSize = 224;
@@ -21,22 +22,18 @@ class OnnxService {
   static const String modelAssetStandard = 'assets/models/jaaltaka_attention.onnx';
   static const String modelAssetFast = 'assets/models/jaaltaka_attention_int8.onnx';
 
-  // ImageNet normalization constants
   static const List<double> mean = [0.485, 0.456, 0.406];
   static const List<double> std = [0.229, 0.224, 0.225];
 
-  // View labels for the guided capture
   static const List<String> viewNames = [
     'View 1 - Front', 'View 2 - Back', 'View 3 - Watermark',
     'View 4 - Security Thread', 'View 5 - Serial Number', 'View 6 - Hologram / UV',
   ];
 
-  // SHAP-based importance for each view
   static const List<double> viewImportance = [
     0.2990, 0.1211, 0.2655, 0.2461, 0.2104, 0.2996,
   ];
 
-  // Occlusion heatmap grid size
   static const int occlusionGridSize = 7;
 
   bool _useFastModel = true;
@@ -52,22 +49,17 @@ class OnnxService {
 
   Future<void> loadModel({bool useFast = true, void Function(double)? onProgress}) async {
     if (_isLoaded && _useFastModel == useFast) return;
-
     if (_isLoaded) {
-      _session?.release(); // release() is void, don't await
+      _session?.release();
       _isLoaded = false;
     }
-
     _useFastModel = useFast;
     final assetPath = useFast ? modelAssetFast : modelAssetStandard;
     final fileName = useFast ? 'jaaltaka_attention_int8.onnx' : 'jaaltaka_attention.onnx';
-
     try {
       final modelPath = await _copyAssetToLocal(assetPath, fileName, onProgress);
       final sessionOptions = OrtSessionOptions();
       sessionOptions.setIntraOpNumThreads(2); 
-      sessionOptions.setInterOpNumThreads(2);
-
       _session = OrtSession.fromFile(File(modelPath), sessionOptions);
       _isLoaded = true;
     } catch (e) {
@@ -81,7 +73,6 @@ class OnnxService {
     final appDir = await getApplicationDocumentsDirectory();
     final modelFile = File('${appDir.path}/$fileName');
     if (await modelFile.exists()) return modelFile.path;
-
     onProgress?.call(0.1);
     final ByteData data = await rootBundle.load(assetPath);
     final List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
@@ -94,11 +85,11 @@ class OnnxService {
     if (!_isLoaded || _session == null) throw Exception('Model not loaded.');
     final totalStopwatch = Stopwatch()..start();
 
-    final List<Uint8List> rgbaList = [];
-    for (var path in viewPaths) rgbaList.add(await _decodeNative(path));
+    // SPEED FIX: Move ALL preprocessing (including slow EXIF and Resizing) 
+    // to a background isolate to keep the UI smooth and use all CPU power.
+    final inputTensor = await compute(_fullBackgroundPreprocessing, viewPaths);
 
-    final inputTensor = await compute(_normalizeInIsolate, rgbaList);
-
+    // Parallel ML and OCR
     final mlFuture = _runModelInInference(inputTensor);
     final ocrFuture = _extractSerialNumber(viewPaths[4]);
     final results = await Future.wait([mlFuture, ocrFuture]);
@@ -119,6 +110,38 @@ class OnnxService {
     );
   }
 
+  /// This static method runs in a separate thread.
+  /// It handles Decoding -> EXIF Rotation -> Resizing -> Normalization for all 6 views.
+  static Float32List _fullBackgroundPreprocessing(List<String> paths) {
+    final tensor = Float32List(numViews * numChannels * inputSize * inputSize);
+    
+    for (int v = 0; v < paths.length; v++) {
+      final bytes = File(paths[v]).readAsBytesSync();
+      var image = img.decodeImage(bytes);
+      if (image == null) continue;
+
+      // 1. Fix Orientation (Important for Camera photos)
+      image = img.bakeOrientation(image);
+
+      // 2. Resize to 224x224
+      image = img.copyResize(image, width: inputSize, height: inputSize, interpolation: img.Interpolation.linear);
+
+      // 3. Normalize into Tensor
+      final base = v * numChannels * inputSize * inputSize;
+      for (int y = 0; y < inputSize; y++) {
+        for (int x = 0; x < inputSize; x++) {
+          final pixel = image.getPixel(x, y);
+          
+          // ImageNet Mean/Std normalization
+          tensor[base + 0 * inputSize * inputSize + y * inputSize + x] = ((pixel.r / 255.0) - mean[0]) / std[0];
+          tensor[base + 1 * inputSize * inputSize + y * inputSize + x] = ((pixel.g / 255.0) - mean[1]) / std[1];
+          tensor[base + 2 * inputSize * inputSize + y * inputSize + x] = ((pixel.b / 255.0) - mean[2]) / std[2];
+        }
+      }
+    }
+    return tensor;
+  }
+
   Future<List<double>> _runModelInInference(Float32List inputTensor) async {
     final shape = [1, numViews, numChannels, inputSize, inputSize];
     final inputOrt = OrtValueTensor.createTensorWithDataList(inputTensor, shape);
@@ -127,38 +150,6 @@ class OnnxService {
     inputOrt.release();
     for (var o in outputs) o?.release();
     return _softmax(logits);
-  }
-
-  Future<Uint8List> _decodeNative(String path) async {
-    final bytes = await File(path).readAsBytes();
-    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-    final descriptor = await ui.ImageDescriptor.encoded(buffer);
-    final codec = await descriptor.instantiateCodec(targetWidth: inputSize, targetHeight: inputSize);
-    final frame = await codec.getNextFrame();
-    final image = frame.image;
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    final result = byteData!.buffer.asUint8List();
-    image.dispose();
-    descriptor.dispose();
-    buffer.dispose();
-    return result;
-  }
-
-  static Float32List _normalizeInIsolate(List<Uint8List> rgbaList) {
-    final tensor = Float32List(numViews * numChannels * inputSize * inputSize);
-    for (int v = 0; v < rgbaList.length; v++) {
-      final rgba = rgbaList[v];
-      final base = v * numChannels * inputSize * inputSize;
-      for (int i = 0; i < inputSize * inputSize; i++) {
-        final r = rgba[i * 4] / 255.0;
-        final g = rgba[i * 4 + 1] / 255.0;
-        final b = rgba[i * 4 + 2] / 255.0;
-        tensor[base + 0 * inputSize * inputSize + i] = (r - mean[0]) / std[0];
-        tensor[base + 1 * inputSize * inputSize + i] = (g - mean[1]) / std[1];
-        tensor[base + 2 * inputSize * inputSize + i] = (b - mean[2]) / std[2];
-      }
-    }
-    return tensor;
   }
 
   List<double> _parseLogits(dynamic outputTensor) {
@@ -183,18 +174,21 @@ class OnnxService {
     void Function(int current, int total)? onProgress,
   }) async {
     if (!_isLoaded || _session == null) throw Exception('Model not loaded.');
-    final List<Uint8List> rgbaList = [];
-    for (var path in viewPaths) rgbaList.add(await _decodeNative(path));
-    final Float32List baselineTensor = await compute(_normalizeInIsolate, rgbaList);
+    
+    // Use the optimized background preprocessor
+    final Float32List baselineTensor = await compute(_fullBackgroundPreprocessing, viewPaths);
     final baselineProbs = await _runModelInInference(baselineTensor);
     final predIdx = baselineProbs[1] > baselineProbs[0] ? 1 : 0;
     final baselineConf = baselineProbs[predIdx];
+
     final cellSize = inputSize ~/ occlusionGridSize;
     final totalOps = numViews * occlusionGridSize * occlusionGridSize;
     int completedOps = 0;
+
     final workingTensor = Float32List.fromList(baselineTensor);
     final backup = Float32List(numChannels * cellSize * cellSize);
     final heatmaps = <List<List<double>>>[];
+
     for (int v = 0; v < numViews; v++) {
       final grid = List.generate(occlusionGridSize, (_) => List.filled(occlusionGridSize, 0.0));
       final viewBase = v * numChannels * inputSize * inputSize;
