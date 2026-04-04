@@ -27,15 +27,6 @@ class _CameraScreenState extends State<CameraScreen> {
   FlashMode _flashMode = FlashMode.off;
   final ImagePicker _picker = ImagePicker();
 
-  static const List<String> _viewInstructions = [
-    'Place the FRONT of the banknote in the frame',
-    'Flip over — capture the BACK of the banknote',
-    'Hold up to light — capture the WATERMARK area',
-    'Capture the SECURITY THREAD (metallic strip)',
-    'Zoom in on the SERIAL NUMBER',
-    'Capture the HOLOGRAM / special feature',
-  ];
-
   static const List<IconData> _viewIcons = [
     Icons.credit_card,
     Icons.flip,
@@ -101,8 +92,6 @@ class _CameraScreenState extends State<CameraScreen> {
         return Icons.flash_on;
       case FlashMode.torch:
         return Icons.highlight;
-      default:
-        return Icons.flash_off;
     }
   }
 
@@ -116,14 +105,12 @@ class _CameraScreenState extends State<CameraScreen> {
         return 'ON';
       case FlashMode.torch:
         return 'TORCH';
-      default:
-        return 'OFF';
     }
   }
 
   Future<void> _hapticFeedback() async {
     try {
-      final hasVibrator = await Vibration.hasVibrator() ?? false;
+      final hasVibrator = await Vibration.hasVibrator();
       if (hasVibrator) {
         Vibration.vibrate(duration: 50);
       }
@@ -184,10 +171,6 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  void _resetCapture() {
-    context.read<AuthenticationProvider>().reset();
-  }
-
   @override
   void dispose() {
     _controller?.dispose();
@@ -246,15 +229,22 @@ class _CameraScreenState extends State<CameraScreen> {
                   : provider.themeMode == ThemeMode.light
                       ? Icons.dark_mode
                       : Icons.brightness_auto;
-              
+
               return [
                 PopupMenuItem(
                   value: 'model',
                   child: Row(
                     children: [
-                      Icon(provider.useFastModel ? Icons.bolt : Icons.precision_manufacturing, size: 20, color: Colors.amber),
+                      Icon(
+                          provider.useFastModel
+                              ? Icons.bolt
+                              : Icons.precision_manufacturing,
+                          size: 20,
+                          color: Colors.amber),
                       const SizedBox(width: 8),
-                      Text(provider.useFastModel ? 'Mode: Fast (INT8)' : 'Mode: Accurate (FP32)'),
+                      Text(provider.useFastModel
+                          ? 'Mode: Fast (INT8)'
+                          : 'Mode: Accurate (FP32)'),
                     ],
                   ),
                 ),
@@ -274,7 +264,9 @@ class _CameraScreenState extends State<CameraScreen> {
                     children: [
                       const Icon(Icons.language, size: 20),
                       const SizedBox(width: 8),
-                      Text(provider.isBangla ? 'Switch to English' : 'বাংলায় পরিবর্তন করুন'),
+                      Text(provider.isBangla
+                          ? 'Switch to English'
+                          : 'বাংলায় পরিবর্তন করুন'),
                     ],
                   ),
                 ),
@@ -282,9 +274,15 @@ class _CameraScreenState extends State<CameraScreen> {
                   value: 'voice',
                   child: Row(
                     children: [
-                      Icon(provider.isVoiceEnabled ? Icons.volume_up : Icons.volume_off, size: 20),
+                      Icon(
+                          provider.isVoiceEnabled
+                              ? Icons.volume_up
+                              : Icons.volume_off,
+                          size: 20),
                       const SizedBox(width: 8),
-                      Text(provider.isVoiceEnabled ? 'Mute Voice' : 'Enable Voice'),
+                      Text(provider.isVoiceEnabled
+                          ? 'Mute Voice'
+                          : 'Enable Voice'),
                     ],
                   ),
                 ),
@@ -305,19 +303,25 @@ class _CameraScreenState extends State<CameraScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.cloud_download, size: 60, color: Colors.blue),
+                  const Icon(Icons.cloud_download,
+                      size: 60, color: Colors.blue),
                   const SizedBox(height: 16),
                   Text(
-                    provider.isBangla ? 'এআই মডেল ডাউনলোড হচ্ছে...' : 'Downloading AI Model...',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    provider.isBangla
+                        ? 'এআই মডেল ডাউনলোড হচ্ছে...'
+                        : 'Downloading AI Model...',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
                     width: 200,
-                    child: LinearProgressIndicator(value: provider.modelLoadProgress),
+                    child: LinearProgressIndicator(
+                        value: provider.modelLoadProgress),
                   ),
                   const SizedBox(height: 8),
-                  Text('${(provider.modelLoadProgress * 100).toStringAsFixed(0)}%'),
+                  Text(
+                      '${(provider.modelLoadProgress * 100).toStringAsFixed(0)}%'),
                 ],
               ),
             );
@@ -340,18 +344,6 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
 
-              // Professional Dynamic Viewfinder Overlay
-              if (_isInitialized)
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: ViewfinderPainter(
-                      viewIndex: provider.currentViewIndex,
-                      isCapturing: _isCapturing,
-                      isBangla: provider.isBangla,
-                    ),
-                  ),
-                ),
-
               // Top: Progress indicator
               Positioned(
                 top: 16,
@@ -364,7 +356,9 @@ class _CameraScreenState extends State<CameraScreen> {
                     child: Column(
                       children: [
                         Text(
-                          provider.isBangla ? 'ছবি $captured / $total' : 'View $captured / $total',
+                          provider.isBangla
+                              ? 'ছবি $captured / $total'
+                              : 'View $captured / $total',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,
@@ -531,8 +525,7 @@ class _CameraScreenState extends State<CameraScreen> {
                                 }
                               : _captureView,
                       child: _isCapturing
-                          ? const CircularProgressIndicator(
-                              color: Colors.white)
+                          ? const CircularProgressIndicator(color: Colors.white)
                           : provider.allViewsCaptured
                               ? const Icon(Icons.arrow_forward, size: 36)
                               : const Icon(Icons.camera_alt, size: 36),
@@ -546,198 +539,3 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 }
-
-/// Custom painter for banknote alignment guide with corner brackets.
-class _BanknoteGuidePainter extends CustomPainter {
-  final Color color;
-  _BanknoteGuidePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round;
-
-    const corner = 24.0;
-    const r = 8.0;
-
-    // Top-left
-    canvas.drawLine(Offset(0, corner), const Offset(0, r), paint);
-    canvas.drawArc(
-      const Rect.fromLTWH(0, 0, r * 2, r * 2),
-      3.14,
-      1.57,
-      false,
-      paint,
-    );
-    canvas.drawLine(const Offset(r, 0), Offset(corner, 0), paint);
-
-    // Top-right
-    canvas.drawLine(Offset(size.width - corner, 0), Offset(size.width - r, 0), paint);
-    canvas.drawArc(
-      Rect.fromLTWH(size.width - r * 2, 0, r * 2, r * 2),
-      -1.57,
-      1.57,
-      false,
-      paint,
-    );
-    canvas.drawLine(Offset(size.width, r), Offset(size.width, corner), paint);
-
-    // Bottom-left
-    canvas.drawLine(Offset(0, size.height - corner), Offset(0, size.height - r), paint);
-    canvas.drawArc(
-      Rect.fromLTWH(0, size.height - r * 2, r * 2, r * 2),
-      1.57,
-      1.57,
-      false,
-      paint,
-    );
-    canvas.drawLine(Offset(r, size.height), Offset(corner, size.height), paint);
-
-    // Bottom-right
-    canvas.drawLine(
-      Offset(size.width - corner, size.height),
-      Offset(size.width - r, size.height),
-      paint,
-    );
-    canvas.drawArc(
-      Rect.fromLTWH(
-        size.width - r * 2,
-        size.height - r * 2,
-        r * 2,
-        r * 2,
-      ),
-      0,
-      1.57,
-      false,
-      paint,
-    );
-    canvas.drawLine(
-      Offset(size.width, size.height - r),
-      Offset(size.width, size.height - corner),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// Professional dynamic viewfinder that changes based on the required view.
-class ViewfinderPainter extends CustomPainter {
-  final int viewIndex;
-  final bool isCapturing;
-  final bool isBangla;
-
-  ViewfinderPainter({
-    required this.viewIndex,
-    required this.isCapturing,
-    required this.isBangla,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = isCapturing ? Colors.red : Colors.white.withOpacity(0.5)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-
-    final fillPaint = Paint()
-      ..color = Colors.black.withOpacity(0.4)
-      ..style = PaintingStyle.fill;
-
-    // View specific bounding boxes
-    Rect viewfinderRect;
-    double w = size.width;
-    double h = size.height;
-
-    switch (viewIndex) {
-      case 0: // Front
-      case 1: // Back
-        viewfinderRect = Rect.fromCenter(
-          center: Offset(w / 2, h / 2),
-          width: w * 0.85,
-          height: w * 0.42,
-        );
-        break;
-      case 2: // Watermark
-        viewfinderRect = Rect.fromCenter(
-          center: Offset(w * 0.75, h / 2),
-          width: w * 0.35,
-          height: w * 0.35,
-        );
-        break;
-      case 3: // Thread
-        viewfinderRect = Rect.fromCenter(
-          center: Offset(w * 0.4, h / 2),
-          width: w * 0.15,
-          height: h * 0.6,
-        );
-        break;
-      case 4: // Serial
-        viewfinderRect = Rect.fromCenter(
-          center: Offset(w / 2, h / 2),
-          width: w * 0.6,
-          height: w * 0.2,
-        );
-        break;
-      case 5: // Hologram
-        viewfinderRect = Rect.fromCenter(
-          center: Offset(w * 0.2, h / 2),
-          width: w * 0.3,
-          height: w * 0.3,
-        );
-        break;
-      default:
-        viewfinderRect = Rect.fromLTWH(0, 0, w, h);
-    }
-
-    // Draw darkened background with transparent hole
-    Path path = Path()
-      ..addRect(Rect.fromLTWH(0, 0, w, h))
-      ..addRect(viewfinderRect)
-      ..fillType = PathFillType.evenOdd;
-    canvas.drawPath(path, fillPaint);
-
-    // Draw viewfinder border
-    final borderPaint = Paint()
-      ..color = isCapturing ? Colors.red : Colors.amber
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round;
-
-    double cornerSize = 30.0;
-    // Top Left
-    canvas.drawLine(viewfinderRect.topLeft, viewfinderRect.topLeft + Offset(0, cornerSize), borderPaint);
-    canvas.drawLine(viewfinderRect.topLeft, viewfinderRect.topLeft + Offset(cornerSize, 0), borderPaint);
-    // Top Right
-    canvas.drawLine(viewfinderRect.topRight, viewfinderRect.topRight + Offset(0, cornerSize), borderPaint);
-    canvas.drawLine(viewfinderRect.topRight, viewfinderRect.topRight + Offset(-cornerSize, 0), borderPaint);
-    // Bottom Left
-    canvas.drawLine(viewfinderRect.bottomLeft, viewfinderRect.bottomLeft + Offset(0, -cornerSize), borderPaint);
-    canvas.drawLine(viewfinderRect.bottomLeft, viewfinderRect.bottomLeft + Offset(cornerSize, 0), borderPaint);
-    // Bottom Right
-    canvas.drawLine(viewfinderRect.bottomRight, viewfinderRect.bottomRight + Offset(0, -cornerSize), borderPaint);
-    canvas.drawLine(viewfinderRect.bottomRight, viewfinderRect.bottomRight + Offset(-cornerSize, 0), borderPaint);
-
-    // Label
-    if (!isCapturing) {
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: isBangla ? "????? ?????" : "ALIGN HERE",
-          style: const TextStyle(color: Colors.amber, fontSize: 14, fontWeight: FontWeight.bold),
-        ),
-        textDirection: TextDirection.ltr,
-      );
-      textPainter.layout();
-      textPainter.paint(canvas, viewfinderRect.topCenter + Offset(-textPainter.width / 2, -25));
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant ViewfinderPainter oldDelegate) =>
-      oldDelegate.viewIndex != viewIndex || oldDelegate.isCapturing != isCapturing;
-}
-

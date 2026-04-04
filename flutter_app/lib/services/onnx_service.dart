@@ -1,15 +1,19 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../models/auth_result.dart';
+import './image_quality_validator.dart';
+import './hardware_detector_service.dart';
+import './exposure_controller_service.dart';
+import './thermal_torch_service.dart';
 
 /// JaalTaka ONNX Service - Final High-Performance Version.
 /// Feature: Lookup-Table (LUT) Normalization + Parallel Native Pipeline.
@@ -42,9 +46,32 @@ class OnnxService {
   bool _isLoaded = false;
   bool get isLoaded => _isLoaded;
 
+  // Phase 2: Hardware adaptation & Thermal/Torch handling
+  HardwareProfile? _hardwareProfile;
+
   void init() {
     OrtEnv.instance.init();
   }
+
+  /// Initialize Phase 2 hardware detection
+  Future<void> initHardwareDetection() async {
+    try {
+      _hardwareProfile = await HardwareDetectorService().initialize();
+      debugPrint('✓ Phase 2.1: Hardware detection initialized');
+      debugPrint('  $_hardwareProfile');
+    } catch (e) {
+      debugPrint('❌ Phase 2.1: Hardware detection failed: $e');
+      // Fallback to safe defaults
+      _hardwareProfile = HardwareProfile(
+        isp: CameraISP.unknown,
+        sensor: SensorProfile.standardWide,
+        deviceModel: 'Unknown',
+        manufacturer: 'Unknown',
+      );
+    }
+  }
+
+  HardwareProfile? get hardwareProfile => _hardwareProfile;
 
   Future<void> loadModel({bool useFast = true, void Function(double)? onProgress}) async {
     if (_isLoaded && _useFastModel == useFast) return;
@@ -84,11 +111,64 @@ class OnnxService {
     if (!_isLoaded || _session == null) throw Exception('Model not loaded.');
     final stopwatch = Stopwatch()..start();
 
-    // 1. PARALLEL DECODING
-    final rgbaList = await Future.wait(viewPaths.map((path) => _decodeNativeFixed(path)));
+    // 0. QUALITY VALIDATION (Phase 1.2 - reject low-quality inputs early)
+    final qualityReports = <ImageQualityReport>[];
+    int validViewCount = 0;
+    for (int i = 0; i < viewPaths.length; i++) {
+      final report = await ImageQualityValidator.validateImage(viewPaths[i]);
+      qualityReports.add(report);
+      if (report.isValid) validViewCount++;
+      
+      // Log quality result
+      if (report.severity == QualitySeverity.critical) {
+        debugPrint('⚠️ View ${i + 1} REJECTED: ${report.reason}');
+      } else if (report.severity == QualitySeverity.warning) {
+        debugPrint('⚠️ View ${i + 1} WARNING: ${report.reason}');
+      } else {
+        debugPrint('✓ View ${i + 1} OK: ${report.metrics}');
+      }
+    }
 
-    // 2. LUT-OPTIMIZED NORMALIZATION (The math is now nearly instant)
-    final inputTensor = await compute(_normalizeWithLUT, rgbaList);
+    // 1. PARALLEL DECODING with EXIF rotation handling
+    final rgbaList = await Future.wait(
+      viewPaths.map((path) => _decodeNativeFixed(path))
+    );
+
+    // Phase 2.2-2.3: Exposure & Thermal analysis
+    if (_hardwareProfile == null) await initHardwareDetection();
+    
+    // Analyze lighting and exposure for first view as representative
+    final lightingAnalysis = rgbaList.isNotEmpty 
+      ? ThermalTorchService.analyzeLighting(rgbaList[0])
+      : LightingAnalysis(
+          condition: LightingCondition.well_lit,
+          meanBrightness: 128.0,
+          recommendTorch: false,
+          torchWillHelp: false,
+          shadowDetail: 0.8,
+          recommendation: 'Standard lighting',
+        );
+    
+    final exposureAnalysis = rgbaList.isNotEmpty
+      ? ExposureControlService.analyzeExposure(rgbaList[0])
+      : null;
+    
+    // Apply exposure correction if needed
+    final correctedRgbaList = <Uint8List>[];
+    for (int i = 0; i < rgbaList.length; i++) {
+      Uint8List corrected = rgbaList[i];
+      if (exposureAnalysis != null) {
+        corrected = ExposureControlService.autoCorrectExposure(corrected, exposureAnalysis);
+      }
+      if (lightingAnalysis.recommendTorch) {
+        corrected = ThermalTorchService.correctTorchArtifacts(corrected, lightingAnalysis);
+      }
+      correctedRgbaList.add(corrected);
+    }
+    debugPrint('📊 Phase 2: ${lightingAnalysis.condition.name} | Exposure: ${exposureAnalysis?.level.name ?? "N/A"}');
+
+    // 2. LUT-OPTIMIZED NORMALIZATION with optional brightness correction (Phase 1.4)
+    final inputTensor = await compute(_normalizeWithLUT, correctedRgbaList);
 
     // 3. PARALLEL ML + OCR
     final mlFuture = _runModelInInference(inputTensor);
@@ -99,20 +179,33 @@ class OnnxService {
     final String serialNumber = results[1] as String;
 
     stopwatch.stop();
+    
+    // Log data quality for debugging
+    final dataQualityNote = 'Valid views: $validViewCount/$numViews | '
+        'Quality: ${qualityReports.map((r) => r.severity.name).join(", ")}';
+    
     return AuthenticationResult(
       isAuthentic: probs[1] > probs[0],
       confidence: probs[1] > probs[0] ? probs[1] : probs[0],
       classProbabilities: {'Fake': probs[0], 'Real': probs[1]},
       inferenceTimeMs: stopwatch.elapsedMilliseconds.toDouble(),
       viewResults: List.generate(numViews, (i) => ViewResult(
-        name: viewNames[i], importance: viewImportance[i], imagePath: viewPaths[i],
+        name: viewNames[i], 
+        importance: viewImportance[i], 
+        imagePath: viewPaths[i],
+        qualityReport: qualityReports[i].toString(),
       )),
       serialNumber: serialNumber,
+      dataQualityNote: dataQualityNote,
     );
   }
 
-  /// High-speed Lookup Table Normalization
+  /// High-speed Lookup Table Normalization with optional Brightness Adaptation
+  /// Phase 1.4: Adds brightness normalization to handle camera auto-exposure variations
   static Float32List _normalizeWithLUT(List<Uint8List> rgbaList) {
+    // Step 1: Optional adaptive brightness normalization (Phase 1.4)
+    final brightnessNormalizedRgba = _adaptiveBrightnessNorm(rgbaList);
+    
     final tensor = Float32List(numViews * numChannels * inputSize * inputSize);
     
     // Pre-calculate the result for all 256 possible pixel values
@@ -128,8 +221,8 @@ class OnnxService {
     }
 
     const channelSize = inputSize * inputSize;
-    for (int v = 0; v < rgbaList.length; v++) {
-      final rgba = rgbaList[v];
+    for (int v = 0; v < brightnessNormalizedRgba.length; v++) {
+      final rgba = brightnessNormalizedRgba[v];
       final base = v * numChannels * channelSize;
       
       for (int i = 0; i < channelSize; i++) {
@@ -142,19 +235,78 @@ class OnnxService {
     return tensor;
   }
 
+  /// Adaptive brightness normalization to handle camera auto-exposure
+  /// Clips extreme values and applies gentle brightness correction
+  /// Phase 1.4 - handles camera artifacts gracefully
+  static List<Uint8List> _adaptiveBrightnessNorm(List<Uint8List> rgbaList) {
+    const double targetMeanBrightness = 128.0; // Midpoint
+    const double alpha = 0.5; // Weight for brightness correction (0.5 = apply half correction)
+
+    final result = <Uint8List>[];
+
+    for (final rgba in rgbaList) {
+      // Calculate mean brightness of this view
+      int sumBrightness = 0;
+      int pixelCount = 0;
+      
+      for (int i = 0; i < rgba.length; i += 4) {
+        final r = rgba[i];
+        final g = rgba[i + 1];
+        final b = rgba[i + 2];
+        // Standard luminance calculation
+        sumBrightness += ((0.299 * r + 0.587 * g + 0.114 * b).toInt() & 0xFF);
+        pixelCount++;
+      }
+
+      final currentMean = pixelCount > 0 ? sumBrightness / pixelCount : 128.0;
+      
+      // Calculate brightness correction factor
+      final correctionFactor = targetMeanBrightness / (currentMean + 1e-6);
+      
+      // Apply gentle correction to avoid artifacts
+      final adaptedRgba = Uint8List(rgba.length);
+      for (int i = 0; i < rgba.length; i += 4) {
+        // Apply brightness correction with blending
+        final r = (rgba[i] * (1 - alpha) + (rgba[i] * correctionFactor) * alpha).clamp(0, 255).toInt();
+        final g = (rgba[i + 1] * (1 - alpha) + (rgba[i + 1] * correctionFactor) * alpha).clamp(0, 255).toInt();
+        final b = (rgba[i + 2] * (1 - alpha) + (rgba[i + 2] * correctionFactor) * alpha).clamp(0, 255).toInt();
+        final a = rgba[i + 3];
+
+        adaptedRgba[i] = r;
+        adaptedRgba[i + 1] = g;
+        adaptedRgba[i + 2] = b;
+        adaptedRgba[i + 3] = a;
+      }
+
+      result.add(adaptedRgba);
+    }
+
+    return result;
+  }
+
+  /// Decodes image with robust, training-aligned preprocessing.
+  /// - Bakes EXIF orientation (camera/gallery consistency)
+  /// - Center-crops shortest side
+  /// - Resizes to 224x224 without aspect distortion
   Future<Uint8List> _decodeNativeFixed(String path) async {
     final bytes = await File(path).readAsBytes();
-    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-    final descriptor = await ui.ImageDescriptor.encoded(buffer);
-    final codec = await descriptor.instantiateCodec(targetWidth: inputSize, targetHeight: inputSize);
-    final frame = await codec.getNextFrame();
-    final image = frame.image;
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    final result = byteData!.buffer.asUint8List();
-    image.dispose();
-    descriptor.dispose();
-    buffer.dispose();
-    return result;
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      throw Exception('Failed to decode image: $path');
+    }
+
+    // Phase 1.3: EXIF robustness (handles camera rotation metadata)
+    final oriented = img.bakeOrientation(decoded);
+
+    // Phase 1.1: distortion-free square crop + resize to model input size
+    final processed = img.copyResizeCropSquare(
+      oriented,
+      size: inputSize,
+      interpolation: img.Interpolation.average,
+    );
+
+    final rgba = processed.getBytes(order: img.ChannelOrder.rgba);
+    return rgba;
   }
 
   Future<List<double>> _runModelInInference(Float32List inputTensor) async {
